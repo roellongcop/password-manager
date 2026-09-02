@@ -46,9 +46,11 @@ algorithm, digits, period, issuer and account are all read from it.
 
 Three ways to add a code:
 
-- **Scan QR on this page** in the popup Codes tab. Keyring screenshots the tab,
-  finds the QR code in it and reads the link out. The screenshot is decoded in the
-  extension and never reaches the page.
+- **Scan QR on this page** in the popup Codes tab. The page dims and you drag a box
+  around the QR code; click without dragging to search the whole visible page, or
+  press Esc to cancel. Keyring crops its screenshot to that box, decodes it and
+  saves the code, then confirms on the page itself. The screenshot is decoded
+  inside the extension and never reaches the page.
 - **A saved image**, or a screenshot pasted with Ctrl+V, in
   Manage -> Import & export.
 - **By hand**, pasting the secret or the otpauth:// link.
@@ -135,7 +137,7 @@ recovery, by design.
 manifest.json            MV3 manifest
 src/lib/                 crypto, vault model, matcher, generator, TOTP, QR, CSV
 src/background/          service worker (holds the key, answers every request)
-src/content/             form detection, autofill, inline menu, save prompt
+src/content/             form detection, autofill, inline menu, save prompt, QR region picker
 src/popup/               the toolbar popup
 src/options/             full manager: items, settings, import/export, backups
 src/onboarding/          first-run master password setup

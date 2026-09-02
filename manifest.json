@@ -44,6 +44,7 @@
         "src/content/autofill.js",
         "src/content/inline-menu.js",
         "src/content/save-prompt.js",
+        "src/content/region-select.js",
         "src/content/main.js"
       ],
       "run_at": "document_idle",

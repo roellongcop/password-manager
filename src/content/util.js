@@ -22,6 +22,8 @@ var KEYRING = (typeof KEYRING !== 'undefined' && KEYRING) || {};
     CAPTURE_DISCARD: 'capture:discard',
     OPEN_POPUP: 'ui:openPopup',
     GEN_PASSWORD: 'gen:password',
+    SELECT_REGION: 'qr:selectRegion',
+    TOAST: 'ui:toast',
   };
 
   // The service worker may be asleep or the extension may have been reloaded from

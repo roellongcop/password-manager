@@ -11,7 +11,7 @@ import * as model from '../lib/vault.js';
 import * as matcher from '../lib/matcher.js';
 import { MSG } from '../lib/messages.js';
 import { generatePassword, generatePassphrase } from '../lib/generator.js';
-import { generateTotp } from '../lib/totp.js';
+import { generateTotp, parseTotpInput } from '../lib/totp.js';
 import { decodeImageData } from '../lib/qr.js';
 
 const AUTOLOCK_ALARM = 'keyring:autolock';
@@ -335,29 +335,111 @@ async function neverForDomain(url) {
 
 // ------------------------------------------------------------------ qr codes
 
-// Grab whatever the active tab is showing and look for a QR code in it. The
-// screenshot is decoded here in the worker and never reaches a web page.
-async function scanVisibleTab() {
-  const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-  if (!tab || !/^https?:/.test(tab.url || '')) {
-    throw new Error('Open the page showing the QR code first.');
+// The popup asks for a scan and then closes, because clicking into the page to
+// choose the region dismisses it. So the whole job finishes here: ask the page for
+// a region, capture, decode, save, and report back on the page itself.
+async function resolveScanTab(preferredTabId) {
+  if (typeof preferredTabId === 'number') {
+    try {
+      const tab = await chrome.tabs.get(preferredTabId);
+      if (tab && /^https?:/.test(tab.url || '')) return tab;
+    } catch {
+      // Closed since the popup opened.
+    }
   }
+  // lastFocusedWindow can point at a popup or devtools window, so fall back to
+  // ordinary browser windows.
+  const candidates = await chrome.tabs.query({ active: true, windowType: 'normal' });
+  const tab = candidates.find((entry) => /^https?:/.test(entry.url || ''));
+  if (!tab) throw new Error('Open the page showing the QR code first.');
+  return tab;
+}
+
+async function toastOnTab(tabId, text) {
+  chrome.tabs.sendMessage(tabId, { type: 'ui:toast', text }).catch(() => {});
+}
+
+async function scanTabRegion(preferredTabId) {
+  const tab = await resolveScanTab(preferredTabId);
+
+  let region = null;
+  try {
+    region = await chrome.tabs.sendMessage(tab.id, { type: 'qr:selectRegion' });
+  } catch {
+    throw new Error('Reload the page and try again — Keyring is not running on it yet.');
+  }
+  if (!region || region.cancelled) return { cancelled: true };
 
   let dataUrl;
   try {
     dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' });
   } catch {
-    throw new Error('This page cannot be captured. Save the QR code as an image and import it instead.');
+    const message = 'This page cannot be captured. Save the QR code as an image and import it instead.';
+    await toastOnTab(tab.id, message);
+    throw new Error(message);
   }
 
-  const bitmap = await createImageBitmap(await (await fetch(dataUrl)).blob());
-  const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+  try {
+    const text = decodeRegion(await fetch(dataUrl), region);
+    const saved = await saveScannedCode(await text);
+    await toastOnTab(tab.id, saved.message);
+    broadcast({ type: 'state:changed' });
+    return saved;
+  } catch (error) {
+    await toastOnTab(tab.id, error.message);
+    throw error;
+  }
+}
+
+// Crop the screenshot to the chosen region before decoding. The capture is in
+// device pixels; the region came back in CSS pixels.
+async function decodeRegion(response, region) {
+  const bitmap = await createImageBitmap(await response.blob());
+  const ratio = region.devicePixelRatio || 1;
+  const rect = region.rect;
+
+  const left = Math.max(0, Math.floor(rect.left * ratio));
+  const top = Math.max(0, Math.floor(rect.top * ratio));
+  const width = Math.min(bitmap.width - left, Math.ceil(rect.width * ratio));
+  const height = Math.min(bitmap.height - top, Math.ceil(rect.height * ratio));
+  if (width < 8 || height < 8) {
+    bitmap.close();
+    throw new Error('That selection is too small to hold a QR code.');
+  }
+
+  const canvas = new OffscreenCanvas(width, height);
   const context = canvas.getContext('2d', { willReadFrequently: true });
-  context.drawImage(bitmap, 0, 0);
-  const imageData = context.getImageData(0, 0, bitmap.width, bitmap.height);
+  context.drawImage(bitmap, left, top, width, height, 0, 0, width, height);
+  const imageData = context.getImageData(0, 0, width, height);
   bitmap.close();
 
-  return { text: decodeImageData(imageData), url: tab.url };
+  return decodeImageData(imageData);
+}
+
+async function saveScannedCode(text) {
+  const parsed = parseTotpInput(text);
+  if (!parsed || !parsed.secret) {
+    throw new Error('That QR code is not an authenticator code.');
+  }
+
+  const vault = await requireVault();
+  const already = vault.items.find(
+    (item) => (item.totp || '').toUpperCase() === parsed.secret.toUpperCase(),
+  );
+  if (already) {
+    return { ok: true, duplicate: true, message: `That code is already saved as "${already.name}".` };
+  }
+
+  const item = model.newItem('totp', {
+    name: parsed.issuer || parsed.account || 'Authenticator code',
+    username: parsed.account || '',
+    totp: parsed.secret,
+    totpAlgorithm: parsed.algorithm,
+    totpDigits: parsed.digits,
+    totpPeriod: parsed.period,
+  });
+  await persist(model.upsertItem(vault, item));
+  return { ok: true, name: item.name, message: `Keyring saved the code for ${item.name}.` };
 }
 
 // ------------------------------------------------------------------ clipboard
@@ -553,7 +635,7 @@ async function handleMessage(message, sender) {
     }
 
     case MSG.SCAN_TAB:
-      return scanVisibleTab();
+      return scanTabRegion(message.tabId);
 
     case MSG.CAPTURE_OFFER:
       return offerCapture(message, sender.tab);

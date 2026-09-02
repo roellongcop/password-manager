@@ -405,48 +405,22 @@ async function fillIntoPage(itemId) {
 
 // --------------------------------------------------------------- authenticator
 
-// Every code in the vault on one screen: standalone entries and the codes attached
-// to logins, ticking together off a single timer.
-// Capture the page behind the popup and pull an otpauth link out of any QR code
-// on it. The screenshot is taken and decoded in the service worker.
-async function scanForCode(button) {
-  const original = button.textContent;
-  button.disabled = true;
-  button.textContent = 'Scanning…';
+// Ask the service worker to run a scan. It puts a selection overlay on the page,
+// and the moment the user clicks into that overlay this popup is dismissed -- so
+// the worker finishes the job on its own and reports back on the page itself.
+async function scanForCode() {
   try {
-    const { text } = await send(MSG.SCAN_TAB);
-    const parsed = parseTotpInput(text);
-    if (!parsed || !parsed.secret) throw new Error('That QR code is not an authenticator code.');
-
-    const item = newItem('totp', {
-      name: parsed.issuer || parsed.account || 'Authenticator code',
-      username: parsed.account || '',
-      totp: parsed.secret,
-      totpAlgorithm: parsed.algorithm,
-      totpDigits: parsed.digits,
-      totpPeriod: parsed.period,
-    });
-
-    const already = state.vault.items.some(
-      (entry) => (entry.totp || '').toUpperCase() === item.totp.toUpperCase(),
-    );
-    if (already) {
-      flashMessage(qs('#notice'), 'That code is already saved.', 'ok');
-      return;
-    }
-
-    await send(MSG.SAVE, { vault: upsertItem(state.vault, item) });
-    await loadVault();
-    setView('codes');
-    flashMessage(qs('#notice'), `Added ${item.name}.`, 'ok');
+    // This does not resolve until the selection is done, by which point the popup
+    // has already been dismissed by the click into the page. Awaiting it anyway is
+    // what surfaces the early failures -- no usable tab, no content script.
+    await send(MSG.SCAN_TAB, { tabId: state.tab?.id });
   } catch (error) {
     flashMessage(qs('#notice'), error.message, 'error', 8000);
-  } finally {
-    button.disabled = false;
-    button.textContent = original;
   }
 }
 
+// Every code in the vault on one screen: standalone entries and the codes attached
+// to logins, ticking together off a single timer.
 function renderCodes() {
   const container = qs('#codes');
   container.textContent = '';
@@ -456,7 +430,7 @@ function renderCodes() {
       el('button', {
         class: 'primary grow',
         text: 'Scan QR on this page',
-        onclick: (event) => scanForCode(event.currentTarget),
+        onclick: scanForCode,
       }),
       el('button', { text: 'Add', title: 'Add a code by hand', onclick: () => openOptions('newcode') }),
     ]),

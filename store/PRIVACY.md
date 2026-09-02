@@ -44,9 +44,9 @@ which sites you will save a login for. On a page it may run:
   you click it in the Keyring menu or press the fill shortcut, and only after the
   extension has confirmed that the item you picked is saved for that exact site.
   Nothing is filled automatically when a page loads.
-- **Reading a QR code, only when you ask.** Choosing "Scan QR on this page"
-  takes a picture of the visible tab, searches it for a QR code and keeps only the
-  authenticator link it finds. The picture is processed inside the extension, is
+- **Reading a QR code, only when you ask.** Choosing "Scan QR on this page" lets
+  you draw a box around the code; Keyring then takes a picture of the visible tab,
+  crops it to that box and keeps only the authenticator link it finds. The picture is processed inside the extension, is
   never stored, and is never sent anywhere. Nothing is captured unless you press
   that button.
 - **Capturing a login you have just typed.** When you submit a login form, Keyring
