@@ -576,19 +576,32 @@ function passwordField(draft) {
   }
   updateMeter();
 
+  // One place decides whether the password is visible, so the button label can
+  // never disagree with the field -- generating reveals the result, and the
+  // button has to say so.
+  const revealButton = el('button', {
+    class: 'icon',
+    text: 'Show',
+    onclick: () => setRevealed(input.type === 'password'),
+  });
+
+  function setRevealed(revealed) {
+    input.type = revealed ? 'text' : 'password';
+    revealButton.textContent = revealed ? 'Hide' : 'Show';
+  }
+
+  function fillGenerated(value) {
+    input.value = value;
+    draft.password = value;
+    setRevealed(true);
+    updateMeter();
+  }
+
   return el('div', { class: 'field' }, [
     el('label', { text: 'Password' }),
     el('div', { class: 'row' }, [
       el('div', { class: 'grow' }, [input]),
-      el('button', {
-        class: 'icon',
-        text: 'Show',
-        onclick: (event) => {
-          const hidden = input.type === 'password';
-          input.type = hidden ? 'text' : 'password';
-          event.currentTarget.textContent = hidden ? 'Hide' : 'Show';
-        },
-      }),
+      revealButton,
       el('button', {
         class: 'icon',
         text: 'Copy',
@@ -597,22 +610,12 @@ function passwordField(draft) {
       el('button', {
         class: 'icon',
         text: 'Generate',
-        onclick: () => {
-          input.value = generatePassword({ length: 20 });
-          draft.password = input.value;
-          input.type = 'text';
-          updateMeter();
-        },
+        onclick: () => fillGenerated(generatePassword({ length: 20 })),
       }),
       el('button', {
         class: 'icon',
         text: 'Passphrase',
-        onclick: () => {
-          input.value = generatePassphrase({ words: 5 });
-          draft.password = input.value;
-          input.type = 'text';
-          updateMeter();
-        },
+        onclick: () => fillGenerated(generatePassphrase({ words: 5 })),
       }),
     ]),
     meter,
