@@ -84,6 +84,10 @@ async function load() {
   applyTheme(vault.settings.theme);
   qs('#gate').classList.add('hidden');
   qs('#app').classList.remove('hidden');
+  // Now that the panes have a real width, the restored splitter position can be
+  // checked against it.
+  const width = parseInt(qs('.panes').style.getPropertyValue('--list-width'), 10);
+  if (width > 0) applyListWidth(width);
   restoreFromHash();
   render();
 }
@@ -280,7 +284,7 @@ function renderSidebar() {
           },
         },
         [
-          el('span', { text: name }),
+          el('span', { text: name, title: name }),
           el('span', {
             class: 'count',
             text: String(state.vault.items.filter((item) => item.folder === name).length),
@@ -447,7 +451,10 @@ function renderEditor() {
         text: domainIconLetter(draft),
         style: `background:${tintFor(draft.name || draft.username || '?')}`,
       }),
-      el('h2', { text: isNew ? `New ${TYPE_LABELS[draft.type] || draft.type}` : draft.name || 'Untitled' }),
+      el('h2', {
+        text: isNew ? `New ${TYPE_LABELS[draft.type] || draft.type}` : draft.name || 'Untitled',
+        title: isNew ? '' : draft.name || '',
+      }),
       el('span', { class: 'grow' }),
       el('button', {
         class: 'icon',
@@ -1775,7 +1782,78 @@ function renderSecurity(pane) {
 
 // --------------------------------------------------------------------- wiring
 
+// ------------------------------------------------------------------ splitter
+
+const LIST_WIDTH_KEY = 'keyring.listWidth';
+const MIN_LIST_WIDTH = 220;
+
+function applyListWidth(pixels) {
+  const panes = qs('.panes');
+  const available = panes.getBoundingClientRect().width;
+  // Always leave a usable editor beside it.
+  const maximum = Math.max(MIN_LIST_WIDTH, available - 380);
+  const clamped = Math.round(Math.min(Math.max(pixels, MIN_LIST_WIDTH), maximum));
+  panes.style.setProperty('--list-width', `${clamped}px`);
+  return clamped;
+}
+
+function wireSplitter() {
+  const splitter = qs('#splitter');
+  const panes = qs('.panes');
+
+  // A window-level UI preference, not vault data, so it lives in localStorage.
+  // Set without clamping: this runs while the app is still hidden, so the
+  // container measures zero and every width would clamp to the minimum. It is
+  // re-clamped once the app is on screen.
+  const saved = Number(localStorage.getItem(LIST_WIDTH_KEY));
+  if (saved > 0) panes.style.setProperty('--list-width', `${Math.round(saved)}px`);
+
+  const onMove = (event) => {
+    applyListWidth(event.clientX - panes.getBoundingClientRect().left);
+  };
+
+  const stop = () => {
+    window.removeEventListener('pointermove', onMove);
+    window.removeEventListener('pointerup', stop);
+    splitter.dataset.dragging = '0';
+    delete document.body.dataset.resizing;
+    const width = parseInt(panes.style.getPropertyValue('--list-width'), 10);
+    if (width > 0) localStorage.setItem(LIST_WIDTH_KEY, String(width));
+  };
+
+  splitter.addEventListener('pointerdown', (event) => {
+    event.preventDefault();
+    splitter.dataset.dragging = '1';
+    document.body.dataset.resizing = '1';
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', stop);
+  });
+
+  // Keyboard: the handle is focusable, so it should move without a mouse.
+  splitter.addEventListener('keydown', (event) => {
+    const step = event.shiftKey ? 40 : 12;
+    const current =
+      parseInt(panes.style.getPropertyValue('--list-width'), 10) ||
+      qs('#list-pane').getBoundingClientRect().width;
+    if (event.key === 'ArrowLeft') {
+      localStorage.setItem(LIST_WIDTH_KEY, String(applyListWidth(current - step)));
+    } else if (event.key === 'ArrowRight') {
+      localStorage.setItem(LIST_WIDTH_KEY, String(applyListWidth(current + step)));
+    } else {
+      return;
+    }
+    event.preventDefault();
+  });
+
+  // Keep it inside the window when the window itself changes size.
+  window.addEventListener('resize', () => {
+    const current = parseInt(panes.style.getPropertyValue('--list-width'), 10);
+    if (current > 0) applyListWidth(current);
+  });
+}
+
 function wireStatic() {
+  wireSplitter();
   qs('#gate-form').addEventListener('submit', async (event) => {
     event.preventDefault();
     try {
