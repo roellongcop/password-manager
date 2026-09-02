@@ -100,7 +100,7 @@ function statusSection(status, notice, refresh) {
     el('p', {
       class: status.signedIn ? 'small muted' : 'small',
       text: status.signedIn
-        ? `Signed in as ${status.email}. Syncing also happens on its own: when the popup or this page is opened, a few seconds after a change, and every five minutes.`
+        ? `Signed in as ${status.email}. Syncing happens when you press Sync now.`
         : status.configured
           ? 'Not signed in yet. Sync is off.'
           : 'Not set up yet. Sync is off.',
@@ -154,7 +154,7 @@ function projectSection(status, notice, refresh) {
     el('div', { class: 'field' }, [
       el('label', { text: 'Name for this computer' }),
       device,
-      el('span', { class: 'small muted', text: 'Anything you like. It is shown on your other computer when the two disagree about the vault.' }),
+      el('span', { class: 'small muted', text: 'Anything you like. It is recorded with each upload, so the other computer can see where the vault came from.' }),
     ]),
 
     el('button', {

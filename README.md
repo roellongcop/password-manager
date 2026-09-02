@@ -106,11 +106,11 @@ Setting it up — the full steps are on **Manage → Sync**:
 On the second computer, install Keyring, enter the same project details, sign in
 with the same sync account, then use **Open the synced vault** and give it the
 master password once. A vault made locally has its own random salt, so that first
-download is what puts both machines on one file; after it, syncing is automatic.
+download is what puts both machines on one file.
 
-Edits upload a few seconds after they are made. A check for what the other machine
-published runs when the popup or the manager is opened, and every five minutes
-besides; **Sync now** on the Sync page forces one.
+Syncing is manual: nothing goes up or comes down until you press **Sync now** on
+the Sync page, which also shows what is on the server, when it last ran, and
+whether this machine has changes that have not been sent.
 
 The copy on the server wins. If this machine has edits that never uploaded and the
 other one has published since, those edits are replaced and the manager says so.

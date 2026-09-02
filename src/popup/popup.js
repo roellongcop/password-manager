@@ -62,9 +62,6 @@ async function boot() {
   }
   state.pending = status.pendingCapture;
   await loadVault();
-  // Clicking the toolbar icon is the moment before the vault is used, so it is
-  // the cheapest place to notice what the other computer published.
-  send(MSG.SYNC_NOW).catch(() => {});
 }
 
 async function currentTab() {

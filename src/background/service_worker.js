@@ -123,7 +123,6 @@ async function unlockVault(password) {
   await touch();
   await refreshBadgeForActiveTab();
   broadcast({ type: 'state:unlocked' });
-  syncManager.syncOnUnlock().catch(() => {});
   return { ok: true };
 }
 
@@ -776,7 +775,6 @@ chrome.runtime.onStartup.addListener(async () => {
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === AUTOLOCK_ALARM) checkAutoLock();
   if (alarm.name === CLIPBOARD_ALARM) clearClipboard();
-  if (alarm.name === syncManager.SYNC_ALARM) syncManager.onAlarm();
 });
 
 chrome.tabs.onActivated.addListener(async ({ tabId }) => {

@@ -8,9 +8,6 @@
 import { KEYS, local } from '../lib/storage.js';
 import * as sync from '../lib/sync.js';
 
-const SYNC_ALARM = 'keyring:sync';
-const DEBOUNCE_MS = 4000;
-
 // Set by the service worker: the only ways this module can touch the vault.
 let hooks = {
   readBlob: async () => null,
@@ -20,7 +17,6 @@ let hooks = {
   broadcast: () => {},
 };
 
-let debounceTimer = null;
 let running = null;
 
 export function configure(next) {
@@ -116,14 +112,12 @@ export async function signIn(email, password, { register = false } = {}) {
   if (!previous || previous.uid !== session.uid) {
     await local.set(KEYS.SYNC_STATE, { ...EMPTY_STATE, dirty: true });
   }
-  await ensureAlarm();
   return { ok: true, email: session.email };
 }
 
 export async function signOut() {
   await local.remove(KEYS.SYNC_SESSION);
   await setState({ lastError: '' });
-  await chrome.alarms.clear(SYNC_ALARM);
   return { ok: true };
 }
 
@@ -143,37 +137,12 @@ export async function status() {
 
 // ---------------------------------------------------------------- the exchange
 
+// Syncing is manual, so this only records that there is something to send. The
+// Sync page reads it back as "Unsent changes".
 export async function markDirty() {
   const session = await getSession();
   if (!session) return;
   await setState({ dirty: true });
-  scheduleSync();
-}
-
-function scheduleSync() {
-  clearTimeout(debounceTimer);
-  // Batch a burst of edits into one upload; the worker usually outlives this.
-  debounceTimer = setTimeout(() => {
-    syncNow().catch(() => {});
-  }, DEBOUNCE_MS);
-  ensureAlarm();
-}
-
-// The alarm is the backstop: it catches anything the debounce missed because the
-// worker was torn down, and it is what pulls in edits made on another machine.
-async function ensureAlarm() {
-  try {
-    await chrome.alarms.create(SYNC_ALARM, { periodInMinutes: 5 });
-  } catch {
-    // Alarms unavailable; manual sync still works.
-  }
-}
-
-export async function onAlarm() {
-  const session = await getSession();
-  if (!session) return;
-  if (!(await hooks.isUnlocked())) return;
-  await syncNow().catch(() => {});
 }
 
 // One at a time. Two overlapping runs would race on the revision counter and
@@ -266,13 +235,3 @@ export async function adoptRemote(password) {
   hooks.broadcast({ type: 'sync:pulled' });
   return { ok: true, revision: remote.revision };
 }
-
-// Called right after an unlock: pick up whatever another machine has published.
-export async function syncOnUnlock() {
-  const session = await getSession();
-  if (!session) return;
-  await ensureAlarm();
-  syncNow().catch(() => {});
-}
-
-export { SYNC_ALARM };

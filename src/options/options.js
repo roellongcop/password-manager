@@ -84,9 +84,6 @@ async function boot() {
   }
   await load();
   showPendingFlash(notice);
-  // Opening the manager is a natural moment to catch up with the other computer.
-  // Failures are the Sync page's business, not a banner over the vault.
-  send(MSG.SYNC_NOW).catch(() => {});
 }
 
 async function load() {
