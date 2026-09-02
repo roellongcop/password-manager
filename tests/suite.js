@@ -833,6 +833,23 @@ test('sync decides which way each case goes', () => {
   equal(sync.nextRevision(remote(9)), 10, 'revisions increase');
 });
 
+test('sync reads the two values it needs out of a pasted Firebase config', () => {
+  const snippet = [
+    'const firebaseConfig = {',
+    '  apiKey: "AIzaSyExample-key_1234",',
+    '  authDomain: "my-vault-1a2b3.firebaseapp.com",',
+    '  projectId: "my-vault-1a2b3",',
+    '  storageBucket: "my-vault-1a2b3.appspot.com",',
+    '};',
+  ].join('\n');
+  equal(sync.parseFirebaseConfig(snippet), { apiKey: 'AIzaSyExample-key_1234', projectId: 'my-vault-1a2b3' }, 'read the snippet');
+
+  // Older consoles print a config with no projectId; the domain carries it.
+  const older = '{ "apiKey": "AIzaOld", "authDomain": "legacy-vault.firebaseapp.com" }';
+  equal(sync.parseFirebaseConfig(older).projectId, 'legacy-vault', 'fell back to the domain');
+  equal(sync.parseFirebaseConfig('nothing useful here'), { apiKey: '', projectId: '' }, 'nothing to read');
+});
+
 export async function runSuite() {
   const results = [];
   for (const { name, fn } of tests) {

@@ -2,6 +2,7 @@
 // touches the vault or the master password itself.
 
 import { MSG, send, el, flashMessage, formatDate, relativeDate } from '../ui/common.js';
+import { parseFirebaseConfig } from '../lib/sync.js';
 
 const RULES = `rules_version = '2';
 service cloud.firestore {
@@ -157,20 +158,57 @@ function conflictSection(status, notice, refresh) {
 
 function projectSection(status, notice, refresh) {
   const config = status.config || {};
-  const apiKey = el('input', { type: 'text', value: config.apiKey || '', placeholder: 'AIza...', autocomplete: 'off', spellcheck: 'false' });
+  const apiKey = el('input', { type: 'text', value: config.apiKey || '', placeholder: 'AIzaSy...', autocomplete: 'off', spellcheck: 'false' });
   const projectId = el('input', { type: 'text', value: config.projectId || '', placeholder: 'my-vault-1a2b3', autocomplete: 'off', spellcheck: 'false' });
   const device = el('input', { type: 'text', value: config.deviceName || status.deviceName || '', autocomplete: 'off' });
 
+  // The console hands over a whole config snippet, so take it whole rather than
+  // making someone pick two values out of it on every computer they set up.
+  const paste = el('textarea', {
+    class: 'mono',
+    rows: '4',
+    placeholder: 'const firebaseConfig = {\n  apiKey: "AIzaSy...",\n  projectId: "my-vault-1a2b3",\n  ...\n};',
+    oninput: () => {
+      const found = parseFirebaseConfig(paste.value);
+      if (!found.apiKey && !found.projectId) return;
+      if (found.apiKey) apiKey.value = found.apiKey;
+      if (found.projectId) projectId.value = found.projectId;
+      paste.value = '';
+      flashMessage(notice, 'Read the API key and project ID out of that. Now save them.', 'ok');
+    },
+  });
+
   return el('div', { class: 'section' }, [
     el('h2', { text: 'Firebase project' }),
-    el('p', { text: 'From the web app you registered in your Firebase project.' }),
-    el('div', { class: 'field' }, [el('label', { text: 'Web API key' }), apiKey]),
-    el('div', { class: 'field' }, [el('label', { text: 'Project ID' }), projectId]),
+    el('p', {
+      text: 'Firebase console → Project settings (the gear, top left) → General → scroll to "Your apps" → the Web app → Config. Paste the whole snippet here and the two fields below fill themselves.',
+    }),
+    el('div', { class: 'field' }, [el('label', { text: 'Paste the Firebase config' }), paste]),
+
+    el('div', { class: 'field' }, [
+      el('label', { text: 'Web API key' }),
+      apiKey,
+      el('span', {
+        class: 'small muted',
+        text: 'The apiKey line in that snippet; starts with AIzaSy. Also shown under Project settings → General → Web API Key. It is an identifier, not a secret — the Firestore rules are what protect the vault.',
+      }),
+    ]),
+
+    el('div', { class: 'field' }, [
+      el('label', { text: 'Project ID' }),
+      projectId,
+      el('span', {
+        class: 'small muted',
+        text: 'The projectId line, and the name in the console URL (console.firebase.google.com/project/THIS-PART). Not the project display name — it is lowercase with a random suffix.',
+      }),
+    ]),
+
     el('div', { class: 'field' }, [
       el('label', { text: 'Name for this computer' }),
       device,
-      el('span', { class: 'small muted', text: 'Shown on the other computer when the two disagree.' }),
+      el('span', { class: 'small muted', text: 'Anything you like. It is shown on your other computer when the two disagree about the vault.' }),
     ]),
+
     el('button', {
       class: 'primary',
       text: 'Save project details',
@@ -228,14 +266,28 @@ function accountSection(status, notice, refresh) {
   return el('div', { class: 'section' }, [
     el('h2', { text: 'Sync account' }),
     el('p', {
-      text: 'A Firebase email and password, used only to reach your own copy of the encrypted file.',
+      text: 'A Firebase email and password you make up here, used only to reach your own copy of the encrypted file. Create it once, then sign in with the same two on every other computer.',
     }),
     el('p', {
       class: 'notice warn',
       text: 'Do not reuse the master password here. This one is checked by Google; the master password must never be.',
     }),
-    el('div', { class: 'field' }, [el('label', { text: 'Email' }), email]),
-    el('div', { class: 'field' }, [el('label', { text: 'Password' }), password]),
+    el('div', { class: 'field' }, [
+      el('label', { text: 'Email' }),
+      email,
+      el('span', {
+        class: 'small muted',
+        text: 'One you invent now. It never receives mail; it is only a name for the account. Created accounts are listed in the console under Authentication → Users.',
+      }),
+    ]),
+    el('div', { class: 'field' }, [
+      el('label', { text: 'Password' }),
+      password,
+      el('span', {
+        class: 'small muted',
+        text: 'Also one you invent, at least six characters. On the second computer, enter the same two and press Sign in instead.',
+      }),
+    ]),
     el('div', { class: 'row' }, [
       el('button', {
         class: 'primary',

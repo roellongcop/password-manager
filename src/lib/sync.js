@@ -31,6 +31,32 @@ export function isConfigured(config) {
   return Boolean(config && config.apiKey && config.projectId);
 }
 
+// Pull the two values Keyring needs out of whatever the Firebase console shows.
+//
+// The console gives a JS snippet, not JSON: unquoted keys, trailing comments,
+// sometimes the whole surrounding <script> block. Rather than parse JavaScript,
+// look for the two keys by name -- anything else in there is irrelevant here.
+export function parseFirebaseConfig(text) {
+  const source = String(text || '');
+  const find = (key) => {
+    const at = source.indexOf(key);
+    if (at < 0) return '';
+    // Everything after the key up to the end of the quoted value that follows.
+    const value = source.slice(at + key.length).match(/^["']?\s*[:=]\s*["']([^"']+)["']/);
+    return value ? value[1].trim() : '';
+  };
+
+  let projectId = find('projectId');
+  const apiKey = find('apiKey');
+  // A config without projectId still usually carries it inside authDomain
+  // (my-vault.firebaseapp.com) or storageBucket.
+  if (!projectId) {
+    const domain = find('authDomain') || find('storageBucket');
+    projectId = domain.split('.')[0] || '';
+  }
+  return { apiKey, projectId };
+}
+
 async function asJson(response) {
   const text = await response.text();
   try {
