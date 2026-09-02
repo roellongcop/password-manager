@@ -256,7 +256,7 @@ function accountSection(status, notice, refresh) {
     }),
     el('p', {
       class: 'notice warn',
-      text: 'Do not reuse the master password here. This one is checked by Google; the master password must never be.',
+      text: 'Do not reuse the master password here. This one is stored by Google, under Authentication → Users in the Firebase console, and is checked there every time you sign in. The master password must never be.',
     }),
     el('div', { class: 'field' }, [el('label', { text: 'Email' }), email]),
     el('div', { class: 'field' }, [el('label', { text: 'Password' }), password]),
