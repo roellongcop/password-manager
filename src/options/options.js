@@ -482,7 +482,7 @@ function renderEditor() {
         'Allow filling on insecure (http) pages',
         draft,
         'allowInsecure',
-        'Off by default: anything typed into an http page travels in the clear.',
+        'Anything sent over http travels in the clear, so untick this for anything that matters. localhost is always allowed either way, since that traffic never leaves the machine.',
       ),
     );
   }

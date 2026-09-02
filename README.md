@@ -130,7 +130,8 @@ everything came back.
   picked, after the extension has confirmed that item is saved for that exact site.
 - Nothing is filled automatically on page load — filling always takes a click or the
   keyboard shortcut.
-- Filling on `http://` pages is refused unless you switch it on for that one item.
+- Filling on `http://` pages is allowed by default but can be turned off per item;
+  `localhost` counts as secure either way, since that traffic never leaves the machine.
 
 The one thing this design cannot survive is a forgotten master password. There is no
 recovery, by design.
@@ -165,7 +166,8 @@ node tests/run.mjs
 
 The same suite runs in a browser at `tests/test.html`, and `tests/forms.html` holds
 login forms in the shapes the detector has to handle (plain, no `<form>`, decoy
-fields, two-step, shadow DOM, late-rendered, one-time code, sign-up, iframe). Serve
+fields, two-step, shadow DOM, late-rendered, one-time code, sign-up, unlabelled,
+iframe). Serve
 them rather than opening from disk:
 
 ```bash

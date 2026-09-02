@@ -97,7 +97,9 @@ export function newItem(type = 'login', fields = {}) {
       totpAlgorithm: TOTP_DEFAULTS.algorithm,
       totpDigits: TOTP_DEFAULTS.digits,
       totpPeriod: TOTP_DEFAULTS.period,
-      allowInsecure: false,
+      // On by default: plenty of real logins live on http, local dev especially.
+      // It only governs filling; the vault itself is encrypted either way.
+      allowInsecure: true,
       passwordHistory: [],
     });
   } else if (type === 'totp') {

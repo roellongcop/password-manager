@@ -187,7 +187,8 @@ async function credentialFor(itemId, frameUrl) {
   }
 
   const page = matcher.parseUrl(frameUrl);
-  if (page && page.protocol === 'http:' && !item.allowInsecure) {
+  const localOnly = page && matcher.isLocalHost(page.hostname);
+  if (page && page.protocol === 'http:' && !localOnly && !item.allowInsecure) {
     const error = new Error('This page is not encrypted (http). Enable "allow on insecure pages" for this item to fill it here.');
     error.code = 'insecure';
     throw error;

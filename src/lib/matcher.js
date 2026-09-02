@@ -43,6 +43,19 @@ export const MATCH_TYPES = Object.freeze([
   { value: 'never', label: 'Never' },
 ]);
 
+// Browsers treat these as secure contexts even over http, because the traffic
+// never leaves the machine.
+export function isLocalHost(host) {
+  const name = String(host || '').toLowerCase();
+  return (
+    name === 'localhost' ||
+    name.endsWith('.localhost') ||
+    name === '127.0.0.1' ||
+    name === '::1' ||
+    name === '[::1]'
+  );
+}
+
 export function isIpHost(host) {
   return /^\d{1,3}(\.\d{1,3}){3}$/.test(host) || host.includes(':');
 }

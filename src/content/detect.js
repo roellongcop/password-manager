@@ -92,16 +92,32 @@
       );
       scopedPasswords.forEach((field) => claimed.add(field));
 
-      const candidates = textInputs
-        .filter((input) => (scope.contains ? scope.contains(input) : true))
-        .map((input) => ({ input, score: scoreUsername(input, passwordField) }))
-        .filter((entry) => entry.score > 0)
-        .sort((a, b) => b.score - a.score);
+      const inScope = textInputs.filter((input) =>
+        scope.contains ? scope.contains(input) : true,
+      );
+      const scored = inScope.map((input) => ({
+        input,
+        score: scoreUsername(input, passwordField),
+      }));
+
+      const candidates = scored.filter((entry) => entry.score > 0).sort((a, b) => b.score - a.score);
+
+      // A username box with no useful name, id, type or label scores nothing, so
+      // scoring alone would leave the field unfound and the captured login with
+      // no username. Fall back to the nearest text input above the password, as
+      // long as it was not ruled out as a search or promo box.
+      const fallback = scored
+        .filter((entry) => entry.score > -1 && documentOrder(entry.input, passwordField) === -1)
+        .pop();
 
       groups.push({
         kind: scopedPasswords.length > 1 ? 'change' : 'login',
         scope,
-        usernameField: candidates.length ? candidates[0].input : null,
+        usernameField: candidates.length
+          ? candidates[0].input
+          : fallback
+            ? fallback.input
+            : null,
         passwordField,
         extraPasswordFields: scopedPasswords.filter((field) => field !== passwordField),
         otpField: findOtp(scope),

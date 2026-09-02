@@ -174,7 +174,22 @@
     </section>
 
     <section>
-      <h2>9. Inside an iframe</h2>
+      <h2>9. Nothing to go on</h2>
+      <p class="hint">
+        No name, id, autocomplete or label on either field. Scoring finds nothing,
+        so the field above the password has to be taken on position alone —
+        otherwise a captured login has no username.
+      </p>
+      <form id="bare">
+        <input type="text" />
+        <input type="password" />
+        <button type="submit">Sign in</button>
+        <output id="bare-out"></output>
+      </form>
+    </section>
+
+    <section>
+      <h2>10. Inside an iframe</h2>
       <p class="hint">Same-origin iframe; the content script runs in it as well.</p>
       <iframe src="iframe-login.html" title="Login in an iframe"></iframe>
     </section>
@@ -215,6 +230,13 @@
       document.getElementById('signup').addEventListener('submit', (event) => {
         event.preventDefault();
         report('signup-out', 'n-user', 'n-pass', 'n-confirm');
+      });
+
+      document.getElementById('bare').addEventListener('submit', (event) => {
+        event.preventDefault();
+        const fields = event.target.querySelectorAll('input');
+        document.getElementById('bare-out').textContent =
+          `Submitted: ${JSON.stringify(fields[0].value)} / ${JSON.stringify(fields[1].value)}`;
       });
 
       // 5. Shadow DOM
