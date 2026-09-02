@@ -21,8 +21,6 @@ import {
 } from '../ui/common.js';
 import {
   newItem,
-  upsertItem,
-  deleteItem,
   getItem,
   searchItems,
   sortItems,
@@ -182,8 +180,23 @@ function syncHash() {
   }
 }
 
-async function persist() {
-  await send(MSG.SAVE, { vault: state.vault });
+// Saves name the one thing that changed rather than shipping the whole vault.
+// The service worker takes the server's copy first and applies the change to
+// that, so it hands back a vault that may hold items from the other computer --
+// which is why the answer replaces state.vault instead of being discarded.
+async function saveItem(item) {
+  const { vault } = await send(MSG.ITEM_SAVE, { item });
+  state.vault = vault;
+}
+
+async function saveNewItems(items) {
+  const { vault } = await send(MSG.ITEMS_ADD, { items });
+  state.vault = vault;
+}
+
+async function saveSettings(patch) {
+  const { vault } = await send(MSG.SETTINGS_SET, { settings: patch });
+  state.vault = vault;
 }
 
 // --------------------------------------------------------------------- render
@@ -242,7 +255,7 @@ const FILTERS = [
 const PAGES = [
   { id: 'settings', label: 'Settings' },
   { id: 'transfer', label: 'Import & export' },
-  { id: 'sync', label: 'Sync' },
+  { id: 'sync', label: 'Updates' },
   { id: 'security', label: 'Master password' },
 ];
 
@@ -410,9 +423,8 @@ async function toggleFavourite(id) {
   const item = getItem(state.vault, id);
   if (!item) return;
   const updated = { ...item, favorite: !item.favorite };
-  state.vault = upsertItem(state.vault, updated);
+  await saveItem(updated);
   if (state.draft && state.draft.id === id) state.draft.favorite = updated.favorite;
-  await persist();
   render();
 }
 
@@ -1186,8 +1198,7 @@ async function saveDraft() {
   const stored = getItem(state.vault, draft.id);
   if (stored) draft.lastUsedAt = stored.lastUsedAt;
 
-  state.vault = upsertItem(state.vault, draft);
-  await persist();
+  await saveItem(draft);
   state.selectedId = draft.id;
   state.draft = structuredClone(getItem(state.vault, draft.id));
   flashMessage(notice, 'Saved.', 'ok');
@@ -1203,8 +1214,8 @@ async function removeItem(id) {
     danger: true,
   });
   if (!confirmed) return;
-  state.vault = deleteItem(state.vault, id);
-  await persist();
+  const { vault } = await send(MSG.ITEM_DELETE, { itemId: id });
+  state.vault = vault;
   state.selectedId = '';
   state.draft = null;
   flashMessage(notice, 'Deleted.', 'ok');
@@ -1339,8 +1350,7 @@ function renderSettings(pane) {
 
   const save = async (patch) => {
     Object.assign(settings, patch);
-    state.vault = { ...state.vault, settings: { ...state.vault.settings, ...patch } };
-    await persist();
+    await saveSettings(patch);
     applyTheme(state.vault.settings.theme);
     flashMessage(notice, 'Settings saved.', 'ok');
   };
@@ -1546,8 +1556,7 @@ function authenticatorImportSection() {
       state.vault.items.filter((item) => item.totp).map((item) => item.totp.toUpperCase()),
     );
 
-    let vault = state.vault;
-    let added = 0;
+    const fresh = [];
     let skipped = 0;
     for (const entry of entries) {
       if (existing.has(entry.secret.toUpperCase())) {
@@ -1555,8 +1564,7 @@ function authenticatorImportSection() {
         continue;
       }
       existing.add(entry.secret.toUpperCase());
-      vault = upsertItem(
-        vault,
+      fresh.push(
         newItem('totp', {
           name: entry.issuer || entry.account || 'Authenticator code',
           username: entry.account || '',
@@ -1566,11 +1574,10 @@ function authenticatorImportSection() {
           totpPeriod: entry.period,
         }),
       );
-      added += 1;
     }
 
-    state.vault = vault;
-    await persist();
+    const added = fresh.length;
+    await saveNewItems(fresh);
     flashMessage(
       notice,
       `Imported ${added} code${added === 1 ? '' : 's'}` +
@@ -1778,11 +1785,7 @@ function importSection() {
       return;
     }
     const { fresh, duplicates } = dedupeAgainst(state.vault.items, items);
-
-    let vault = state.vault;
-    for (const item of fresh) vault = upsertItem(vault, item);
-    state.vault = vault;
-    await persist();
+    await saveNewItems(fresh);
 
     const parts = [`Imported ${fresh.length} item${fresh.length === 1 ? '' : 's'}.`];
     if (duplicates.length) parts.push(`${duplicates.length} already in the vault, skipped.`);

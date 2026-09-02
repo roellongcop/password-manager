@@ -49,7 +49,10 @@ async function getVault() {
   return cachedVault;
 }
 
-async function persist(vault) {
+// quiet: written to disk but not queued for upload. Used for lastUsedAt, which
+// is ordering metadata -- worth keeping, not worth a round trip, and not worth
+// the risk of sending a stale vault over a fresher one.
+async function persist(vault, { quiet = false } = {}) {
   const rawKey = await getRawKey();
   if (!rawKey) throw new Error('Vault is locked.');
   const blob = await getBlob();
@@ -57,8 +60,21 @@ async function persist(vault) {
   await local.set(KEYS.BLOB, sealed);
   cachedBlob = sealed;
   cachedVault = vault;
-  syncManager.markDirty().catch(() => {});
+  if (!quiet) syncManager.markDirty().catch(() => {});
   return vault;
+}
+
+// Every real edit goes through here: take the server's copy first, apply the
+// change to that, then let persist queue the upload. An edit therefore lands on
+// top of what the other computer published instead of replacing it.
+async function editVault(apply) {
+  await syncManager.refreshBeforeEdit();
+  const vault = await requireVault();
+  const next = await apply(vault);
+  await persist(next);
+  await refreshBadgeForActiveTab();
+  broadcast({ type: 'state:changed' });
+  return next;
 }
 
 async function requireVault() {
@@ -201,7 +217,7 @@ async function credentialFor(itemId, frameUrl) {
     throw error;
   }
 
-  await persist(model.touchItem(vault, itemId));
+  await persist(model.touchItem(vault, itemId), { quiet: true });
 
   let totpCode = '';
   if (item.totp) {
@@ -304,39 +320,43 @@ function decideCapture(vault, payload, url) {
 // The password comes from the pending capture held in session storage, never
 // from the caller, so it does not make a round trip through the web page.
 async function saveCapture({ action, itemId, name }) {
-  const vault = await requireVault();
+  await requireVault();
   const pending = await session.get(KEYS.PENDING_CAPTURE, null);
   if (!pending || !pending.password) throw new Error('There is nothing waiting to be saved.');
   const { username, password, url } = pending;
 
-  if (action === 'update' && itemId) {
-    const existing = model.getItem(vault, itemId);
-    if (!existing) throw new Error('That item no longer exists.');
-    const updated = { ...existing, password };
-    if (username && !existing.username) updated.username = username;
-    await persist(model.upsertItem(vault, updated));
-  } else {
+  await editVault((current) => {
+    if (action === 'update' && itemId) {
+      const existing = model.getItem(current, itemId);
+      if (!existing) throw new Error('That item no longer exists.');
+      const updated = { ...existing, password };
+      if (username && !existing.username) updated.username = username;
+      return model.upsertItem(current, updated);
+    }
     const item = model.newItem('login', {
       name: name || matcher.suggestedName(url),
       username: username || '',
       password,
       uris: url ? [{ uri: matcher.parseUrl(url)?.origin || url, matchType: 'domain' }] : [],
     });
-    await persist(model.upsertItem(vault, item));
-  }
+    return model.upsertItem(current, item);
+  });
 
   await session.remove(KEYS.PENDING_CAPTURE);
-  await refreshBadgeForActiveTab();
-  broadcast({ type: 'state:changed' });
   return { ok: true };
 }
 
 async function neverForDomain(url) {
-  const vault = await requireVault();
+  await requireVault();
   const domain = matcher.registrableDomain(url);
   if (!domain) return { ok: false };
-  const neverDomains = [...new Set([...(vault.settings.neverDomains || []), domain])];
-  await persist({ ...vault, settings: { ...vault.settings, neverDomains } });
+  await editVault((current) => ({
+    ...current,
+    settings: {
+      ...current.settings,
+      neverDomains: [...new Set([...(current.settings.neverDomains || []), domain])],
+    },
+  }));
   await session.remove(KEYS.PENDING_CAPTURE);
   return { ok: true, domain };
 }
@@ -454,7 +474,7 @@ async function saveScannedCode(text) {
     totpDigits: parsed.digits,
     totpPeriod: parsed.period,
   });
-  await persist(model.upsertItem(vault, item));
+  await editVault((current) => model.upsertItem(current, item));
   return { ok: true, name: item.name, message: `Keyring saved the code for ${item.name}.` };
 }
 
@@ -608,7 +628,7 @@ async function handleMessage(message, sender) {
     case MSG.USED: {
       const vault = await requireVault();
       if (!model.getItem(vault, message.itemId)) return { ok: false };
-      await persist(model.touchItem(vault, message.itemId));
+      await persist(model.touchItem(vault, message.itemId), { quiet: true });
       return { ok: true };
     }
 
@@ -618,12 +638,24 @@ async function handleMessage(message, sender) {
       return { vault };
     }
 
-    case MSG.SAVE: {
+    case MSG.ITEM_SAVE: {
       await touch();
-      await persist(model.migrate(message.vault));
-      await refreshBadgeForActiveTab();
-      broadcast({ type: 'state:changed' });
-      return { ok: true };
+      const vault = await editVault((current) => model.upsertItem(current, message.item));
+      return { vault };
+    }
+
+    case MSG.ITEM_DELETE: {
+      await touch();
+      const vault = await editVault((current) => model.deleteItem(current, message.itemId));
+      return { vault };
+    }
+
+    case MSG.ITEMS_ADD: {
+      await touch();
+      const vault = await editVault((current) =>
+        (message.items || []).reduce((acc, item) => model.upsertItem(acc, item), current),
+      );
+      return { vault };
     }
 
     case MSG.CHANGE_PASSWORD:
@@ -686,11 +718,12 @@ async function handleMessage(message, sender) {
       return { ok: true };
 
     case MSG.SETTINGS_SET: {
-      const vault = await requireVault();
-      await persist({ ...vault, settings: { ...vault.settings, ...message.settings } });
       await touch();
-      broadcast({ type: 'state:changed' });
-      return { ok: true };
+      const vault = await editVault((current) => ({
+        ...current,
+        settings: { ...current.settings, ...message.settings },
+      }));
+      return { vault };
     }
 
     case MSG.SYNC_STATUS:

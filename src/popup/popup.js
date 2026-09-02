@@ -18,8 +18,6 @@ import {
   publicSummary,
   hasTotp,
   totpConfig,
-  newItem,
-  upsertItem,
 } from '../lib/vault.js';
 import { rankMatches, registrableDomain } from '../lib/matcher.js';
 import { generateTotp, secondsRemaining, parseTotpInput } from '../lib/totp.js';

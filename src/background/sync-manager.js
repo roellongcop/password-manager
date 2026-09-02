@@ -159,6 +159,38 @@ function scheduleUpload() {
   }, DEBOUNCE_MS);
 }
 
+// Called before every edit: the change is applied on top of the server's copy
+// rather than on top of whatever this computer last saw. That is what stops one
+// machine's save erasing items the other added while it was not looking.
+//
+// It is best-effort by design. Offline, signed out, or a vault sealed under a
+// different master password all mean the edit still saves locally -- refusing to
+// save a password because a server could not be reached would be far worse.
+export async function refreshBeforeEdit() {
+  const session = await getSession();
+  if (!session) return { skipped: true };
+  if (!(await hooks.isUnlocked())) return { skipped: true };
+
+  // Something here never made it up. Taking the server's copy now would throw it
+  // away, so leave the local vault alone and let the upload carry it.
+  const state = await getState();
+  if (state.dirty) return { skipped: true };
+
+  try {
+    const { config, session: live } = await activeSession();
+    const remote = await sync.fetchRemote(config, live);
+    if (!remote) return { skipped: true };
+    await hooks.applyRemoteBlob(remote.blob);
+    await setState({ lastError: '', lastSyncedAt: new Date().toISOString() });
+    hooks.broadcast({ type: 'sync:changed' });
+    return { pulled: true };
+  } catch (error) {
+    await setState({ lastError: error.message });
+    hooks.broadcast({ type: 'sync:changed' });
+    return { failed: true, message: error.message };
+  }
+}
+
 // One at a time. Two overlapping runs could push a stale blob over a fresh one.
 export function syncNow(options = {}) {
   if (running) return running;

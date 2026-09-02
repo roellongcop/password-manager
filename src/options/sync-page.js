@@ -1,4 +1,4 @@
-// The Sync page. Everything here talks to the service worker; this file never
+// The Updates page. Everything here talks to the service worker; this file never
 // touches the vault or the master password itself.
 
 import { MSG, send, el, flashMessage, flashAfterReload, formatDate, relativeDate } from '../ui/common.js';
@@ -47,16 +47,16 @@ export function renderSync(pane, { notice }) {
 
 function intro() {
   return el('div', { class: 'section' }, [
-    el('h2', { text: 'Sync' }),
+    el('h2', { text: 'Updates' }),
     el('p', {
       text: 'Keep the vault in a Firebase project you own, so a second computer gets the same items. Only the encrypted file is uploaded — the master password never leaves this machine and the server cannot read a single field.',
     }),
     el('ul', { class: 'small muted', style: 'margin-top:8px' }, [
-      el('li', { text: 'Both computers use one master password, because the file is sealed with it. On the second computer, open the vault once with "Open the synced vault" below.' }),
-      el('li', { text: 'A save always goes up, over whatever is on the server, so nothing you type here is left behind.' }),
-      el('li', { text: 'Updates from the other computer only come down when you ask for them, and they replace this vault wholesale. Take an update before editing if the other computer has been busy.' }),
-      el('li', { text: 'Sync only runs while the vault is unlocked.' }),
-      el('li', { text: 'Turning sync off leaves the vault on this computer exactly as it is.' }),
+      el('li', { text: 'Both computers use one master password, because the file is sealed with it. On the second computer, open the vault once with "Open the vault from the server" below.' }),
+      el('li', { text: 'Every save takes the latest copy from the server first, applies your change to it, and sends it back — so two computers can add items without erasing each other.' }),
+      el('li', { text: 'Check for updates does the same without an edit: it brings down whatever the other computer has published.' }),
+      el('li', { text: 'This only runs while the vault is unlocked. Offline, a save still happens locally and goes up next time.' }),
+      el('li', { text: 'Turning it off leaves the vault on this computer exactly as it is.' }),
     ]),
   ]);
 }
@@ -87,7 +87,7 @@ function statusSection(status, notice, refresh) {
           pull: 'Updated with the vault from the other computer.',
           none: 'Already up to date.',
         };
-        flashMessage(notice, said[result.action] || 'Sync finished.', 'ok');
+        flashMessage(notice, said[result.action] || 'Finished.', 'ok');
       } catch (error) {
         flashMessage(notice, error.message, 'error', 0);
       }
@@ -100,10 +100,10 @@ function statusSection(status, notice, refresh) {
     el('p', {
       class: status.signedIn ? 'small muted' : 'small',
       text: status.signedIn
-        ? `Signed in as ${status.email}. Changes here upload on their own a few seconds after you save. Check for updates to bring down what another computer has published.`
+        ? `Signed in as ${status.email}. Saving here takes the latest copy first, then sends yours back. Check for updates to pick up the other computer's work without editing anything.`
         : status.configured
-          ? 'Not signed in yet. Sync is off.'
-          : 'Not set up yet. Sync is off.',
+          ? 'Not signed in yet. Updates are off.'
+          : 'Not set up yet. Updates are off.',
     }),
     ...rows,
     status.lastError
@@ -173,13 +173,13 @@ function projectSection(status, notice, refresh) {
 function accountSection(status, notice, refresh) {
   if (status.signedIn) {
     return el('div', { class: 'section' }, [
-      el('h2', { text: 'Sync account' }),
+      el('h2', { text: 'Firebase account' }),
       el('p', { text: `Signed in as ${status.email}.` }),
       el('button', {
-        text: 'Turn sync off on this computer',
+        text: 'Turn updates off on this computer',
         onclick: async () => {
           await send(MSG.SYNC_SIGNOUT);
-          flashMessage(notice, 'Sync is off. The vault on this computer is untouched.', 'ok');
+          flashMessage(notice, 'Updates are off. The vault on this computer is untouched.', 'ok');
           await refresh();
         },
       }),
@@ -205,9 +205,9 @@ function accountSection(status, notice, refresh) {
   };
 
   return el('div', { class: 'section' }, [
-    el('h2', { text: 'Sync account' }),
+    el('h2', { text: 'Firebase account' }),
     el('p', {
-      text: 'A Firebase email and password you make up here, used only to reach your own copy of the encrypted file. Create it once, then sign in with the same two on every other computer.',
+      text: 'An email and password you make up here, used only to reach your own copy of the encrypted file. Create it once, then sign in with the same two on every other computer.',
     }),
     el('p', {
       class: 'notice warn',
@@ -246,14 +246,14 @@ function adoptSection(status, notice, refresh) {
 
   return el('div', { class: 'section' }, [
     el('details', {}, [
-      el('summary', { text: 'Open the synced vault on this computer' }),
+      el('summary', { text: 'Open the vault from the server on this computer' }),
       el('p', {
         class: 'small',
         style: 'margin-top:10px',
         text: 'Replaces everything on this computer with the copy from the server. Use it when setting up a new computer, or if Keyring says the file was sealed elsewhere.',
       }),
       el('div', { class: 'field' }, [
-        el('label', { text: 'Master password of the synced vault' }),
+        el('label', { text: 'Master password of the vault on the server' }),
         password,
       ]),
       el('button', {
@@ -263,7 +263,7 @@ function adoptSection(status, notice, refresh) {
           try {
             await send(MSG.SYNC_ADOPT, { password: password.value });
             password.value = '';
-            flashAfterReload('This computer now holds the synced vault.');
+            flashAfterReload('This computer now holds the vault from the server.');
             location.reload();
           } catch (error) {
             flashMessage(notice, error.message, 'error', 0);
@@ -289,7 +289,7 @@ function helpSection() {
         el('li', { text: 'Build → Firestore Database → Create database → start in production mode.' }),
         el('li', { text: 'Firestore → Rules → replace them with the rules below → Publish. These are what stop anyone else reading your file.' }),
         el('li', { text: 'Project settings (the gear) → General → Your apps → add a Web app. Paste the whole config snippet it shows into "Paste the Firebase config" above; the API key and project ID are read out of it. The API key is the apiKey line and the project ID is the lowercase name in the console URL, if you would rather type them.' }),
-        el('li', { text: 'Paste those two above, save, then create the sync account.' }),
+        el('li', { text: 'Paste those two above, save, then create the account.' }),
       ]),
       rules,
       el('p', {
@@ -298,7 +298,7 @@ function helpSection() {
       }),
       el('p', {
         class: 'small muted',
-        text: 'On the second computer: install Keyring, enter the same project details, sign in with the same sync account, then use "Open the synced vault" once with your master password.',
+        text: 'On the second computer: install Keyring, enter the same project details, sign in with the same account, then use "Open the vault from the server" once with your master password.',
       }),
     ]),
   ]);

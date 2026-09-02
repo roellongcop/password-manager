@@ -4,8 +4,9 @@ A local-only password manager for Chrome, Edge and Brave. Encrypted vault, autof
 save prompts, password generator, TOTP codes, secure notes and cards — no account,
 no subscription, no third party involved.
 
-Nothing leaves the machine unless you switch on **Sync**, which keeps the encrypted
-vault in a Firebase project you own. Off by default; see [Sync](#sync).
+Nothing leaves the machine unless you switch on **Updates**, which keeps the
+encrypted vault in a Firebase project you own. Off by default; see
+[Updates](#updates).
 
 ## Install
 
@@ -78,45 +79,47 @@ Authenticator export format) are not supported — export individual links inste
 Give a standalone entry a website and its code fills the one-time-code field there,
 the same way a login does.
 
-## Sync
+## Updates
 
-Sync is off until you switch it on, and it is the one thing here that touches the
-network. Turned on, Keyring keeps the vault in a Firebase project **you** own, so a
-second computer gets the same items.
+Off until you switch it on, and the one thing here that touches the network.
+Turned on, Keyring keeps the vault in a Firebase project **you** own, so a second
+computer gets the same items.
 
 What is uploaded is the encrypted blob and nothing else — the same file the
-extension keeps on disk, plus the time and the name of the machine that wrote it. Encryption and decryption happen locally, the master password never
-leaves the machine, and Google (or anyone else who reaches the document) sees one
-opaque string.
+extension keeps on disk, plus the time and the name of the machine that wrote it.
+Encryption and decryption happen locally, the master password never leaves the
+machine, and Google (or anyone else who reaches the document) sees one opaque
+string.
 
 It speaks the Firebase REST API with plain `fetch`. The Firebase SDK is not
 bundled: a password manager should not ship a large third-party library it has
 never read, and MV3 forbids loading one at runtime anyway.
 
-Setting it up — the full steps are on **Manage → Sync**:
+Setting it up — the full steps are on **Manage → Updates**:
 
 1. Create a Firebase project, enable Email/Password authentication and Firestore.
 2. Replace the Firestore rules with the ones shown on that page. They are what
    stops anyone but you reading the document.
 3. Register a Web app in the project and paste its `apiKey` and `projectId` in.
-4. Create the sync account. **Use a different password from the master password** —
-   this one is checked by Google, and the master password must never be.
+4. Create the Firebase account. **Use a different password from the master
+   password** — this one is checked by Google, and the master password must never be.
 
 On the second computer, install Keyring, enter the same project details, sign in
-with the same sync account, then use **Open the synced vault** and give it the
+with the same account, then use **Open the vault from the server** and give it the
 master password once. A vault made locally has its own random salt, so that first
 download is what puts both machines on one file.
 
-Saving uploads: a few seconds after any change the encrypted file goes up, over
-whatever is there. A save is never left behind.
+Every save is read-modify-write: Keyring downloads the current file, applies your
+change to that, and sends it back. So an item added on one machine survives a save
+on the other, without any merging of the vault contents themselves. Uploads are
+batched a few seconds after the change.
 
-Downloading is manual — press **Check for updates** on the Sync page to take what
-another machine has published. An automatic download could replace what you had
-just typed, so it waits to be asked.
+**Check for updates** on the Updates page does the download half on its own, for
+when you want the other machine's work without editing anything.
 
-There is no merging. Each transfer moves the whole file, so the last upload wins:
-items added on the other machine and not taken here first are lost. Take an update
-before editing if the other machine has been busy.
+Two saves in the same few seconds on two machines can still lose one — the second
+download would have to land between the first machine's download and its upload.
+Offline, the save is kept locally and goes up with the next one.
 
 ## Import and export
 
