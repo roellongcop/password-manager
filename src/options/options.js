@@ -172,6 +172,7 @@ function render() {
     state.draft = null;
   }
   syncHash();
+  syncNewButtons();
   renderSidebar();
   const showingPage = Boolean(state.page);
   qs('.panes').classList.toggle('hidden', showingPage);
@@ -181,6 +182,27 @@ function render() {
   else {
     renderList();
     renderEditor();
+  }
+}
+
+// The toolbar buttons start a new item of each type; the one whose form is open
+// is lit, so it is clear which kind is being created.
+const NEW_BUTTONS = [
+  ['#new-login', 'login'],
+  ['#new-note', 'note'],
+  ['#new-card', 'card'],
+  ['#new-code', 'totp'],
+];
+
+// "totp" is the stored type; "code" is what the button says.
+const TYPE_LABELS = { login: 'login', note: 'note', card: 'card', totp: 'code' };
+
+function syncNewButtons() {
+  // Only while creating -- highlighting one of these while an existing item is
+  // open would suggest that item is a new one.
+  const creating = !state.page && state.draft && !state.selectedId ? state.draft.type : '';
+  for (const [selector, type] of NEW_BUTTONS) {
+    qs(selector).dataset.active = creating === type ? '1' : '0';
   }
 }
 
@@ -387,7 +409,7 @@ function renderEditor() {
         text: domainIconLetter(draft),
         style: `background:${tintFor(draft.name || draft.username || '?')}`,
       }),
-      el('h2', { text: isNew ? `New ${draft.type}` : draft.name || 'Untitled' }),
+      el('h2', { text: isNew ? `New ${TYPE_LABELS[draft.type] || draft.type}` : draft.name || 'Untitled' }),
       el('span', { class: 'grow' }),
       el('button', {
         class: 'icon',

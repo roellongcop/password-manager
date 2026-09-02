@@ -417,3 +417,10 @@ table.map select {
 details > summary {
   list-style: revert;
 }
+
+.toolbar button[data-active='1'] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+  font-weight: 600;
+}
