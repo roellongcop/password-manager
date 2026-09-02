@@ -36,7 +36,7 @@ rejection, and the name is hard to change later.
 if you leave this alone)
 
 ```
-Local-only password manager. Encrypted vault, autofill, generator, TOTP. No account, no server, no sync.
+Password manager with an encrypted vault, autofill, generator and TOTP. Optional sync via a Firebase project you own.
 ```
 
 **Category:** Productivity — **Language:** English
@@ -44,12 +44,16 @@ Local-only password manager. Encrypted vault, autofill, generator, TOTP. No acco
 **Detailed description**
 
 ```
-Keyring is a password manager that never leaves your computer.
+Keyring is a password manager that keeps your vault under your own control.
 
 Your vault is a single file, encrypted with AES-256-GCM under a key derived from
 your master password (PBKDF2-SHA-256, 600,000 iterations). It is stored in your own
-browser profile. There is no account to create, no server to trust, and no sync.
-The extension makes no network requests at all.
+browser profile. There is no account to create and no server to trust.
+
+Sync is off unless you switch it on. If you do, Keyring keeps the same encrypted
+file in a Firebase project you create and control, so a second computer gets the
+same items. Only the encrypted file is uploaded; the master password never leaves
+your machine.
 
 WHAT IT DOES
 
@@ -144,7 +148,7 @@ The extension must detect login forms and fill credentials on whichever sites th
 user has saved a login for. Those sites are chosen entirely by the user and are not
 known in advance, so no narrower set of match patterns is possible. On a page the
 content script reads only login form fields in order to fill or capture them, and
-no page content is transmitted anywhere — the extension makes no network requests.
+no page content is transmitted anywhere.
 
 This permission also covers tabs.captureVisibleTab, which is used for one thing:
 when the user presses "Scan QR on this page" to add a two-factor code. The
@@ -157,9 +161,13 @@ the user presses that button.
 included in the package.
 
 **Data usage** — the form asks what the item *collects*, meaning transmits off the
-device. Keyring transmits nothing, so every box is unticked, including
-authentication information and financial information. The vault stays on the user's
-machine and the developer has no access to it.
+device. With sync switched off nothing is transmitted at all. Sync is optional and
+user-configured, but it does send the vault off the device, so tick
+**Authentication information** (and **Financial information** if cards are used) and
+declare it as transferred for the app's core functionality. Say in the justification
+that the data is end-to-end encrypted with a key derived from the user's master
+password, that it is sent only to a Firebase project the user owns, and that the
+developer has no access to it.
 
 Then tick all three certifications: no sale of data, no use or transfer for
 unrelated purposes, no use or transfer for creditworthiness or lending.

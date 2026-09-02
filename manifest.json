@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Keyring",
   "version": "1.0.0",
-  "description": "Local-only password manager. Encrypted vault, autofill, generator, TOTP. No account, no server, no sync.",
+  "description": "Password manager with an encrypted vault, autofill, generator and TOTP. Optional sync via a Firebase project you own.",
   "minimum_chrome_version": "116",
   "icons": {
     "16": "icons/icon-16.png",

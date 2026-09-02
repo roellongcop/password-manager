@@ -24,10 +24,20 @@ timer fires.
 
 ## What Keyring transmits
 
-Nothing. The extension makes no network requests of any kind. There is no account,
-no server, no sync, no analytics, no telemetry, no crash reporting and no remote
-code. The author of Keyring cannot see your vault, your settings, the sites you
-visit, or the fact that you use the extension at all.
+Nothing, unless you switch on Sync. Sync is off until you set it up, and with it off
+the extension makes no network requests of any kind: no account, no server, no
+analytics, no telemetry, no crash reporting and no remote code.
+
+With Sync on, the extension uploads your vault to a Firebase project **you** create
+and control, under a Firebase account you create. What is uploaded is the encrypted
+blob described above, a revision number, and a name you give the computer. Nothing
+is decrypted anywhere but on your own machines, and your master password is never
+sent, in any form. The author of Keyring has no access to your Firebase project and
+no way to reach anything in it. Google’s handling of the data you store in your own
+Firebase project is covered by your agreement with Google.
+
+The author of Keyring cannot see your vault, your settings, the sites you visit, or
+the fact that you use the extension at all.
 
 Files you export are written to your own downloads folder by your browser and are
 not sent anywhere.
@@ -58,14 +68,16 @@ than the single one you chose for that site.
 
 ## Data sharing
 
-Keyring shares no data with anyone, because it sends no data anywhere. Nothing is
-sold, transferred, or used for advertising, credit assessment, or any purpose other
-than running the extension for you.
+Keyring shares no data with anyone. Nothing is sold, transferred, or used for
+advertising, credit assessment, or any purpose other than running the extension for
+you. If you switch on Sync, your encrypted vault is stored in infrastructure you
+chose and control; it is not shared with the author of Keyring or anyone else.
 
 ## Deleting your data
 
 Manage → Master password → **Delete this vault** erases everything from the browser
-profile. Removing the extension from Chrome also removes its storage. Neither can
+profile. If you used Sync, delete the document from your own Firebase console too;
+Keyring cannot reach it once the extension is gone. Removing the extension from Chrome also removes its storage. Neither can
 be undone, and neither the author nor anyone else holds a copy that could restore
 it — there is no recovery for a forgotten master password, by design.
 

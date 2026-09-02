@@ -11,6 +11,11 @@ export const KEYS = Object.freeze({
   UNLOCK_EXPIRES: 'unlockExpires',
   PENDING_CAPTURE: 'pendingCapture',
   LAST_USERNAME: 'lastUsername',
+  // Sync lives in local storage: the config is not secret, and the refresh token
+  // is a credential to the sync account only -- it opens nothing but ciphertext.
+  SYNC_CONFIG: 'syncConfig',
+  SYNC_SESSION: 'syncSession',
+  SYNC_STATE: 'syncState',
 });
 
 let accessLevelSet = false;

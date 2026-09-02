@@ -9,6 +9,7 @@ import * as csv from '../src/lib/csv.js';
 import * as totp from '../src/lib/totp.js';
 import * as generator from '../src/lib/generator.js';
 import * as qr from '../src/lib/qr.js';
+import * as sync from '../src/lib/sync.js';
 import { QR_FIXTURES, fixtureMatrix } from './qr-fixtures.js';
 
 const tests = [];
@@ -726,6 +727,110 @@ test('a symbol larger than the supported range is reported, not misread', () => 
     message = error.message;
   }
   assert(message.includes('version 13'), `expected the version in the message, got "${message}"`);
+});
+
+// --------------------------------------------------------------------- sync
+
+const SYNC_CONFIG = { apiKey: 'test-key', projectId: 'vault-test' };
+const SYNC_SESSION = { uid: 'user-1', idToken: 'token-1' };
+
+// A stub standing in for the network: it records what was asked and replies with
+// something canned, so the shape of the request is what is under test.
+function stubFetch(replies) {
+  const calls = [];
+  const fetchImpl = async (url, options = {}) => {
+    calls.push({ url, options });
+    const reply = replies.shift();
+    if (!reply) throw new Error('unexpected request to ' + url);
+    return {
+      ok: reply.status === undefined || reply.status < 400,
+      status: reply.status || 200,
+      text: async () => (reply.body === undefined ? '' : JSON.stringify(reply.body)),
+    };
+  };
+  return { fetchImpl, calls };
+}
+
+test('sync writes to the signed-in account document only', async () => {
+  const { fetchImpl, calls } = stubFetch([{ body: {} }]);
+  await sync.pushRemote(
+    SYNC_CONFIG,
+    SYNC_SESSION,
+    { blob: { v: 1, ct: 'cipher' }, revision: 4, updatedAt: '2026-01-01T00:00:00.000Z', device: 'Windows' },
+    fetchImpl,
+  );
+
+  const [call] = calls;
+  assert(call.url.endsWith('/documents/vaults/user-1'), 'wrote somewhere else: ' + call.url);
+  equal(call.options.headers.authorization, 'Bearer token-1', 'sent the id token');
+
+  const sent = JSON.parse(call.options.body);
+  equal(sent.fields.revision.integerValue, '4', 'revision travelled');
+  equal(JSON.parse(sent.fields.blob.stringValue).ct, 'cipher', 'the blob travelled verbatim');
+});
+
+test('sync uploads ciphertext and nothing else', async () => {
+  const vault = model.emptyVault();
+  vault.items.push(model.newItem('login', { name: 'GitHub', username: 'ada', password: 'hunter2' }));
+  const { blob } = await vaultCrypto.create(vault, 'correct horse battery staple');
+
+  const { fetchImpl, calls } = stubFetch([{ body: {} }]);
+  await sync.pushRemote(SYNC_CONFIG, SYNC_SESSION, { blob, revision: 1, updatedAt: '', device: '' }, fetchImpl);
+
+  const body = calls[0].options.body;
+  for (const secret of ['hunter2', 'ada', 'GitHub']) {
+    assert(!body.includes(secret), secret + ' left the machine in the sync payload');
+  }
+});
+
+test('sync reads a document back into a blob', async () => {
+  const { fetchImpl } = stubFetch([
+    {
+      body: {
+        fields: {
+          blob: { stringValue: '{"v":1,"ct":"cipher"}' },
+          revision: { integerValue: '7' },
+          updatedAt: { stringValue: '2026-01-02T03:04:05.000Z' },
+          device: { stringValue: 'Mac (Chrome)' },
+        },
+      },
+    },
+  ]);
+  const remote = await sync.fetchRemote(SYNC_CONFIG, SYNC_SESSION, fetchImpl);
+  equal(remote.revision, 7, 'revision parsed');
+  equal(remote.blob.ct, 'cipher', 'blob parsed');
+  equal(remote.device, 'Mac (Chrome)', 'device parsed');
+});
+
+test('sync treats a missing document as an empty server, not an error', async () => {
+  const { fetchImpl } = stubFetch([{ status: 404, body: { error: { message: 'NOT_FOUND' } } }]);
+  equal(await sync.fetchRemote(SYNC_CONFIG, SYNC_SESSION, fetchImpl), null, 'no document yet');
+});
+
+test('sync turns a Firebase error code into something readable', async () => {
+  const { fetchImpl } = stubFetch([{ status: 400, body: { error: { message: 'INVALID_PASSWORD' } } }]);
+  let message = '';
+  try {
+    await sync.signIn(SYNC_CONFIG, 'ada@example.com', 'wrong', fetchImpl);
+  } catch (error) {
+    message = error.message;
+  }
+  equal(message, 'Wrong sync password.', 'explained the failure');
+});
+
+test('sync decides which way each case goes', () => {
+  const remote = (revision) => ({ revision, blob: {}, updatedAt: '', device: '' });
+
+  equal(sync.decideSync({ revision: 0, dirty: true }, null), 'push', 'seeds an empty server');
+  equal(sync.decideSync({ revision: 3, dirty: false }, remote(3)), 'none', 'nothing to do');
+  equal(sync.decideSync({ revision: 3, dirty: true }, remote(3)), 'push', 'local edits go up');
+  equal(sync.decideSync({ revision: 3, dirty: false }, remote(5)), 'pull', 'their edits come down');
+  // The case that matters: both sides moved, so neither is thrown away silently.
+  equal(sync.decideSync({ revision: 3, dirty: true }, remote(5)), 'conflict', 'both sides moved');
+  equal(sync.decideSync({ revision: 5, dirty: false }, remote(3)), 'push', 'a lost push is retried');
+
+  equal(sync.nextRevision(null), 1, 'first upload is revision 1');
+  equal(sync.nextRevision(remote(9)), 10, 'revisions increase');
 });
 
 export async function runSuite() {

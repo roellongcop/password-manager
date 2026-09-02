@@ -31,6 +31,15 @@ export const MSG = Object.freeze({
   CAPTURE_PENDING: 'capture:pending',
   CAPTURE_DISCARD: 'capture:discard',
 
+  SYNC_STATUS: 'sync:status',
+  SYNC_CONFIGURE: 'sync:configure',
+  SYNC_SIGNIN: 'sync:signIn',
+  SYNC_SIGNUP: 'sync:signUp',
+  SYNC_SIGNOUT: 'sync:signOut',
+  SYNC_NOW: 'sync:now',
+  SYNC_RESOLVE: 'sync:resolve',
+  SYNC_ADOPT: 'sync:adopt',
+
   OPEN_POPUP: 'ui:openPopup',
   SETTINGS_SET: 'settings:set',
 });

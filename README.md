@@ -4,8 +4,8 @@ A local-only password manager for Chrome, Edge and Brave. Encrypted vault, autof
 save prompts, password generator, TOTP codes, secure notes and cards — no account,
 no subscription, no third party involved.
 
-There is no server, no sync and no telemetry. The extension makes **no network
-requests at all**.
+Nothing leaves the machine unless you switch on **Sync**, which keeps the encrypted
+vault in a Firebase project you own. Off by default; see [Sync](#sync).
 
 ## Install
 
@@ -78,6 +78,41 @@ Authenticator export format) are not supported — export individual links inste
 Give a standalone entry a website and its code fills the one-time-code field there,
 the same way a login does.
 
+## Sync
+
+Sync is off until you switch it on, and it is the one thing here that touches the
+network. Turned on, Keyring keeps the vault in a Firebase project **you** own, so a
+second computer gets the same items.
+
+What is uploaded is the encrypted blob and nothing else — the same file the
+extension keeps on disk, plus a revision number and the name of the machine that
+wrote it. Encryption and decryption happen locally, the master password never
+leaves the machine, and Google (or anyone else who reaches the document) sees one
+opaque string.
+
+It speaks the Firebase REST API with plain `fetch`. The Firebase SDK is not
+bundled: a password manager should not ship a large third-party library it has
+never read, and MV3 forbids loading one at runtime anyway.
+
+Setting it up — the full steps are on **Manage → Sync**:
+
+1. Create a Firebase project, enable Email/Password authentication and Firestore.
+2. Replace the Firestore rules with the ones shown on that page. They are what
+   stops anyone but you reading the document.
+3. Register a Web app in the project and paste its `apiKey` and `projectId` in.
+4. Create the sync account. **Use a different password from the master password** —
+   this one is checked by Google, and the master password must never be.
+
+On the second computer, install Keyring, enter the same project details, sign in
+with the same sync account, then use **Open the synced vault** and give it the
+master password once. A vault made locally has its own random salt, so that first
+download is what puts both machines on one file; after it, syncing is automatic.
+
+Edits upload a few seconds after they are made, and a check runs every five
+minutes to pick up what the other machine published. If both machines edited
+while apart, Keyring stops and asks which copy to keep rather than guessing and
+discarding the other one.
+
 ## Import and export
 
 Keyring has its own CSV format. These are the columns, in the order the exporter
@@ -135,6 +170,9 @@ everything came back.
   picked, after the extension has confirmed that item is saved for that exact site.
 - Nothing is filled automatically on page load — filling always takes a click or the
   keyboard shortcut.
+- Sync, when on, uploads only the encrypted blob. The key is never derived anywhere
+  but on your own machine, and a downloaded vault is refused unless it opens with
+  the key already in memory.
 - Filling on `http://` pages is allowed by default but can be turned off per item;
   `localhost` counts as secure either way, since that traffic never leaves the machine.
 
@@ -145,11 +183,11 @@ recovery, by design.
 
 ```
 manifest.json            MV3 manifest
-src/lib/                 crypto, vault model, matcher, generator, TOTP, QR, CSV
-src/background/          service worker (holds the key, answers every request)
+src/lib/                 crypto, vault model, matcher, generator, TOTP, QR, CSV, sync
+src/background/          service worker (holds the key, answers every request), sync
 src/content/             form detection, autofill, inline menu, save prompt, QR region picker
 src/popup/               the toolbar popup
-src/options/             full manager: items, settings, import/export, backups
+src/options/             full manager: items, settings, import/export, backups, sync
 src/onboarding/          first-run master password setup
 tests/                   library test suite, QR fixtures, login-form fixtures
 tools/make-icons.js      regenerates the PNG icons

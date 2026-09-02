@@ -42,6 +42,7 @@ import {
   buildOtpAuthUri,
 } from '../lib/totp.js';
 import { decodeImageData, encodeSvg, encodeMatrix } from '../lib/qr.js';
+import { renderSync } from './sync-page.js';
 import {
   analyze,
   rowsToItems,
@@ -238,6 +239,7 @@ const FILTERS = [
 const PAGES = [
   { id: 'settings', label: 'Settings' },
   { id: 'transfer', label: 'Import & export' },
+  { id: 'sync', label: 'Sync' },
   { id: 'security', label: 'Master password' },
 ];
 
@@ -1326,6 +1328,7 @@ function renderPage() {
   if (state.page === 'settings') renderSettings(pane);
   if (state.page === 'transfer') renderTransfer(pane);
   if (state.page === 'security') renderSecurity(pane);
+  if (state.page === 'sync') renderSync(pane, { notice });
 }
 
 function renderSettings(pane) {
@@ -1910,7 +1913,7 @@ function renderSecurity(pane) {
       el('ul', { class: 'small muted' }, [
         el('li', { text: 'PBKDF2-SHA256, 600,000 iterations, then AES-256-GCM over the whole vault.' }),
         el('li', { text: 'The master password is never stored, and the key lives in memory only while unlocked.' }),
-        el('li', { text: 'Nothing is sent anywhere: the extension makes no network requests at all.' }),
+        el('li', { text: 'Nothing leaves this computer unless you switch on Sync, and then only the encrypted file.' }),
         el('li', { text: 'A site only ever receives the one credential you pick for it.' }),
       ]),
     ]),
@@ -2045,6 +2048,9 @@ function wireStatic() {
 
 chrome.runtime.onMessage.addListener((message) => {
   if (message?.type === 'state:locked') location.reload();
+  // A pull swaps the whole vault underneath this page, so start it over rather
+  // than leave a half-stale list and a draft of an item that may no longer exist.
+  if (message?.type === 'sync:pulled') location.reload();
 });
 
 boot().catch((error) => {

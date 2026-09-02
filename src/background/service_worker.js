@@ -13,6 +13,7 @@ import { MSG } from '../lib/messages.js';
 import { generatePassword, generatePassphrase } from '../lib/generator.js';
 import { generateTotp, parseTotpInput } from '../lib/totp.js';
 import { decodeImageData } from '../lib/qr.js';
+import * as syncManager from './sync-manager.js';
 
 const AUTOLOCK_ALARM = 'keyring:autolock';
 const CLIPBOARD_ALARM = 'keyring:clipboard';
@@ -56,6 +57,7 @@ async function persist(vault) {
   await local.set(KEYS.BLOB, sealed);
   cachedBlob = sealed;
   cachedVault = vault;
+  syncManager.markDirty().catch(() => {});
   return vault;
 }
 
@@ -108,6 +110,7 @@ async function createVault(password) {
   await session.set(KEYS.SESSION_KEY, vaultCrypto.toBase64(rawKey));
   await touch();
   await refreshBadgeForActiveTab();
+  syncManager.markDirty().catch(() => {});
   return { ok: true };
 }
 
@@ -120,6 +123,7 @@ async function unlockVault(password) {
   await touch();
   await refreshBadgeForActiveTab();
   broadcast({ type: 'state:unlocked' });
+  syncManager.syncOnUnlock().catch(() => {});
   return { ok: true };
 }
 
@@ -133,11 +137,13 @@ async function changeMasterPassword(currentPassword, nextPassword) {
   cachedVault = model.migrate(vault);
   await session.set(KEYS.SESSION_KEY, vaultCrypto.toBase64(rawKey));
   await touch();
+  syncManager.markDirty().catch(() => {});
   return { ok: true };
 }
 
-// Import replaces the whole vault from an exported blob, so it doubles as restore.
-async function importBlob(blob, password) {
+// Import replaces the whole vault from an exported blob, so it doubles as restore
+// and as the first download of a synced vault.
+async function importBlob(blob, password, { fromSync = false } = {}) {
   vaultCrypto.assertBlob(blob);
   const { vault, rawKey } = await vaultCrypto.unlock(blob, password);
   await local.set(KEYS.BLOB, blob);
@@ -145,6 +151,8 @@ async function importBlob(blob, password) {
   cachedVault = model.migrate(vault);
   await session.set(KEYS.SESSION_KEY, vaultCrypto.toBase64(rawKey));
   await touch();
+  // A vault that just came down from the server is not a change to send back up.
+  if (!fromSync) syncManager.markDirty().catch(() => {});
   return { ok: true, itemCount: cachedVault.items.length };
 }
 
@@ -686,6 +694,30 @@ async function handleMessage(message, sender) {
       return { ok: true };
     }
 
+    case MSG.SYNC_STATUS:
+      return syncManager.status();
+
+    case MSG.SYNC_CONFIGURE:
+      return syncManager.saveConfig(message.config);
+
+    case MSG.SYNC_SIGNIN:
+      return syncManager.signIn(message.email, message.password, { register: false });
+
+    case MSG.SYNC_SIGNUP:
+      return syncManager.signIn(message.email, message.password, { register: true });
+
+    case MSG.SYNC_SIGNOUT:
+      return syncManager.signOut();
+
+    case MSG.SYNC_NOW:
+      return syncManager.syncNow();
+
+    case MSG.SYNC_RESOLVE:
+      return syncManager.resolveConflict(message.choice);
+
+    case MSG.SYNC_ADOPT:
+      return syncManager.adoptRemote(message.password);
+
     case 'clipboard:scheduleClear':
       return scheduleClipboardClear(message.seconds);
 
@@ -747,6 +779,7 @@ chrome.runtime.onStartup.addListener(async () => {
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === AUTOLOCK_ALARM) checkAutoLock();
   if (alarm.name === CLIPBOARD_ALARM) clearClipboard();
+  if (alarm.name === syncManager.SYNC_ALARM) syncManager.onAlarm();
 });
 
 chrome.tabs.onActivated.addListener(async ({ tabId }) => {
@@ -799,6 +832,38 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
       .sendMessage(tab.id, { type: 'fill:generate' }, { frameId: info.frameId })
       .catch(() => {});
   }
+});
+
+// --------------------------------------------------------------------- sync
+
+// The only doors the sync module has into the vault. Note applyRemoteBlob: a
+// downloaded blob has to open with the key already in memory before it is allowed
+// to replace anything, so a vault sealed under a different master password is
+// rejected instead of quietly locking the user out of their own machine.
+syncManager.configure({
+  readBlob: () => getBlob(),
+  adoptBlob: (blob, password) => importBlob(blob, password, { fromSync: true }),
+  isUnlocked: async () => !(await isLocked()),
+  broadcast,
+  async applyRemoteBlob(blob) {
+    vaultCrypto.assertBlob(blob);
+    const rawKey = await getRawKey();
+    if (!rawKey) throw new Error('Vault is locked.');
+
+    let vault;
+    try {
+      vault = await vaultCrypto.open(blob, rawKey);
+    } catch {
+      throw new Error(
+        'The file on the server was sealed on another computer. Use "Open the synced vault" on the Sync page and enter its master password once.',
+      );
+    }
+
+    await local.set(KEYS.BLOB, blob);
+    cachedBlob = blob;
+    cachedVault = model.migrate(vault);
+    await refreshBadgeForActiveTab();
+  },
 });
 
 // Kick the access level on every cold start of the worker.
