@@ -108,8 +108,9 @@ with the same sync account, then use **Open the synced vault** and give it the
 master password once. A vault made locally has its own random salt, so that first
 download is what puts both machines on one file; after it, syncing is automatic.
 
-Edits upload a few seconds after they are made, and a check runs every five
-minutes to pick up what the other machine published. If both machines edited
+Edits upload a few seconds after they are made. A check for what the other machine
+published runs when the popup or the manager is opened, and every five minutes
+besides; **Sync now** on the Sync page forces one. If both machines edited
 while apart, Keyring stops and asks which copy to keep rather than guessing and
 discarding the other one.
 

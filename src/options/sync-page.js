@@ -101,7 +101,7 @@ function statusSection(status, notice, refresh) {
     el('p', {
       class: status.signedIn ? 'small muted' : 'small',
       text: status.signedIn
-        ? `Signed in as ${status.email}.`
+        ? `Signed in as ${status.email}. Syncing also happens on its own: when the popup or this page is opened, a few seconds after a change, and every five minutes.`
         : status.configured
           ? 'Not signed in yet. Sync is off.'
           : 'Not set up yet. Sync is off.',
