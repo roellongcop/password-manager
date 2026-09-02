@@ -8,7 +8,49 @@
 (() => {
   const TEXT_TYPES = ['text', 'email', 'tel', 'url', ''];
 
-  const USERNAME_HINTS = /user|email|e-mail|login|account|identifi|signin|handle|phone|mobile/;
+  // A login box is called a lot of things. English first, then the words the
+  // same field carries on non-English sites.
+  const USERNAME_HINTS =
+    /user|uname|usr\b|login|logon|signin|sign-in|account|acct|member|customer|subscriber|identifi|ident\b|handle|nick|alias|screen ?name|display ?name|email|e-mail|mail|phone|mobile|msisdn|usuario|utilisateur|identifiant|courriel|benutzer|nutzer|anwender|kennung|gebruiker|utente|utilizador|usuário|用户|使用者|帳號|账号|ユーザ|사용자|아이디|логин|пользовател/;
+
+  // An exact field name is a much stronger signal than the word appearing
+  // somewhere in a label, and it is what tells a real username box apart from a
+  // "search by username" box.
+  const USERNAME_NAMES = new Set([
+    'user',
+    'username',
+    'user_name',
+    'username1',
+    'userid',
+    'user_id',
+    'uname',
+    'usr',
+    'login',
+    'loginid',
+    'login_id',
+    'login_name',
+    'loginname',
+    'j_username',
+    'account',
+    'accountname',
+    'account_name',
+    'email',
+    'emailaddress',
+    'email_address',
+    'e-mail',
+    'mail',
+    'identifier',
+    'identity',
+    'handle',
+    'nickname',
+    'member',
+    'memberid',
+    'customerid',
+    'usuario',
+    'utilisateur',
+    'benutzername',
+    'gebruikersnaam',
+  ]);
 
   // Deliberately not a bare "address": "Email address" is the single most common
   // label a login field has, and vetoing it threw away the field entirely.
@@ -53,7 +95,17 @@
     const autocomplete = (input.getAttribute('autocomplete') || '').toLowerCase();
     if (autocomplete.includes('username')) score += 60;
     if (autocomplete.includes('email')) score += 40;
-    if ((input.getAttribute('type') || '').toLowerCase() === 'email') score += 30;
+
+    // An exactly-named field outranks anything inferred from surrounding words.
+    const named = (attribute) =>
+      USERNAME_NAMES.has(
+        (input.getAttribute(attribute) || '').trim().toLowerCase().replace(/[[\]]/g, ''),
+      );
+    if (named('name') || named('id') || named('data-auth-field')) score += 50;
+
+    const type = (input.getAttribute('type') || '').toLowerCase();
+    if (type === 'email') score += 30;
+    if (type === 'tel') score += 10;
     if (USERNAME_HINTS.test(text)) score += 25;
 
     // The veto only applies when nothing positive was found. A field that says

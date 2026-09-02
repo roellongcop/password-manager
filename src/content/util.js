@@ -106,19 +106,29 @@ var KEYRING = (typeof KEYRING !== 'undefined' && KEYRING) || {};
     }, 700);
   };
 
+  // Everything on a field that might name it. Frameworks scatter the useful word
+  // across data-* attributes as often as they put it in name or id, so those are
+  // swept up too -- skipping the machine-generated ones (long values, hex ids)
+  // that would only add noise.
   KEYRING.attributeText = (element) => {
-    return [
+    const parts = [
       element.getAttribute('name'),
       element.getAttribute('id'),
       element.getAttribute('autocomplete'),
       element.getAttribute('placeholder'),
       element.getAttribute('aria-label'),
-      element.getAttribute('data-testid'),
+      element.getAttribute('title'),
       element.labels && element.labels.length ? element.labels[0].textContent : '',
-    ]
-      .filter(Boolean)
-      .join(' ')
-      .toLowerCase();
+    ];
+
+    for (const attribute of element.attributes || []) {
+      if (!attribute.name.startsWith('data-')) continue;
+      parts.push(attribute.name.slice(5));
+      const value = attribute.value || '';
+      if (value.length <= 24 && !/^[0-9a-f]{8,}$/i.test(value)) parts.push(value);
+    }
+
+    return parts.filter(Boolean).join(' ').toLowerCase();
   };
 
   KEYRING.isTopFrame = window.top === window;

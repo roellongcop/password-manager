@@ -205,7 +205,37 @@
     </section>
 
     <section>
-      <h2>11. Inside an iframe</h2>
+      <h2>11. Username, not email</h2>
+      <p class="hint">
+        Plenty of sites ask for a username. Three shapes: named plainly, named
+        cryptically with only a label to go on, and labelled in another language.
+      </p>
+      <form id="uname">
+        <label for="u-plain">Username</label>
+        <input id="u-plain" name="username" type="text" />
+        <label for="u-pass">Password</label>
+        <input id="u-pass" name="password" type="password" />
+        <button type="submit">Sign in</button>
+        <output id="uname-out"></output>
+      </form>
+      <form id="cryptic" style="margin-top: 16px">
+        <label for="c-user">User name</label>
+        <input id="c-user" name="f_2" type="text" />
+        <input id="c-pass" name="f_3" type="password" />
+        <button type="submit">Log in</button>
+        <output id="cryptic-out"></output>
+      </form>
+      <form id="foreign" style="margin-top: 16px">
+        <label for="fo-user">Nombre de usuario</label>
+        <input id="fo-user" name="campo1" type="text" />
+        <input id="fo-pass" name="campo2" type="password" />
+        <button type="submit">Entrar</button>
+        <output id="foreign-out"></output>
+      </form>
+    </section>
+
+    <section>
+      <h2>12. Inside an iframe</h2>
       <p class="hint">Same-origin iframe; the content script runs in it as well.</p>
       <iframe src="iframe-login.html" title="Login in an iframe"></iframe>
     </section>
@@ -247,6 +277,17 @@
         event.preventDefault();
         report('signup-out', 'n-user', 'n-pass', 'n-confirm');
       });
+
+      for (const [form, user, pass] of [
+        ['uname', 'u-plain', 'u-pass'],
+        ['cryptic', 'c-user', 'c-pass'],
+        ['foreign', 'fo-user', 'fo-pass'],
+      ]) {
+        document.getElementById(form).addEventListener('submit', (event) => {
+          event.preventDefault();
+          report(form + '-out', user, pass);
+        });
+      }
 
       document.getElementById('emailaddr').addEventListener('submit', (event) => {
         event.preventDefault();
