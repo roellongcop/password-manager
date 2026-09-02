@@ -1049,6 +1049,12 @@ async function saveDraft() {
   draft.uris = (draft.uris || []).filter((entry) => entry.uri.trim());
   draft.customFields = (draft.customFields || []).filter((field) => field.name.trim() || field.value.trim());
 
+  // lastUsedAt is not an editable field, and the draft was cloned when the item
+  // was opened -- possibly before a copy bumped it. Take the stored value so a
+  // save never winds the recency back.
+  const stored = getItem(state.vault, draft.id);
+  if (stored) draft.lastUsedAt = stored.lastUsedAt;
+
   state.vault = upsertItem(state.vault, draft);
   await persist();
   state.selectedId = draft.id;
@@ -1074,9 +1080,35 @@ async function removeItem(id) {
   render();
 }
 
-async function copyValue(value, button) {
+// Copying a secret out of the editor is using the item, so it counts towards the
+// recency order the same way filling does. Every copy button in the editor
+// belongs to the open item, so the id does not need threading through each one.
+async function markUsed(itemId) {
+  if (!itemId) return;
+  const item = getItem(state.vault, itemId);
+  if (!item) return;
+  try {
+    await send(MSG.USED, { itemId });
+  } catch {
+    return;
+  }
+  // Keep the local copy in step: the next Save sends this whole vault, and a
+  // stale copy here would write the old timestamp straight back over it.
+  const usedAt = new Date().toISOString();
+  state.vault = {
+    ...state.vault,
+    items: state.vault.items.map((entry) =>
+      entry.id === itemId ? { ...entry, lastUsedAt: usedAt } : entry,
+    ),
+  };
+  if (state.draft && state.draft.id === itemId) state.draft.lastUsedAt = usedAt;
+  renderList();
+}
+
+async function copyValue(value, button, itemId = state.selectedId) {
   try {
     await copyWithAutoClear(value, state.vault.settings.clipboardClearSeconds);
+    markUsed(itemId);
     // Never swap textContent on a button built from child elements: it would
     // delete them.
     if (button.firstElementChild) {

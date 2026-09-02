@@ -134,6 +134,28 @@ test('using an item moves it to the top', () => {
   equal(model.sortItems(vault.items)[0].name, 'First', 'and the next one takes over');
 });
 
+test('saving an item does not wind back when it was last used', () => {
+  // The editor holds a clone taken when the item was opened; a copy afterwards
+  // bumps the stored item. Saving the stale clone must not undo that.
+  let vault = model.emptyVault();
+  const item = model.newItem('login', { name: 'GitHub', password: 'old' });
+  vault = model.upsertItem(vault, item);
+
+  const draft = structuredClone(model.getItem(vault, item.id));
+  vault = model.touchItem(vault, item.id);
+  const used = model.getItem(vault, item.id).lastUsedAt;
+  assert(used, 'the stored item now has a timestamp');
+  equal(draft.lastUsedAt, null, 'the clone predates it');
+
+  // This is what saveDraft does before upserting.
+  draft.password = 'new';
+  draft.lastUsedAt = model.getItem(vault, draft.id).lastUsedAt;
+  vault = model.upsertItem(vault, draft);
+
+  equal(model.getItem(vault, item.id).lastUsedAt, used, 'timestamp survived the save');
+  equal(model.getItem(vault, item.id).password, 'new', 'the edit still applied');
+});
+
 test('publicSummary carries no secrets', () => {
   const item = model.newItem('login', { name: 'X', username: 'u', password: 'p', totp: 'JBSW' });
   const summary = model.publicSummary(item);

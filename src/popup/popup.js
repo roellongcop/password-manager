@@ -380,10 +380,26 @@ function stopTotpTimer() {
   state.totpTimer = 0;
 }
 
+// Mark the item used, and keep the local vault in step so a later save does not
+// write the old timestamp back over it.
+async function markUsed(itemId) {
+  try {
+    await send(MSG.USED, { itemId });
+  } catch {
+    return;
+  }
+  state.vault = {
+    ...state.vault,
+    items: state.vault.items.map((entry) =>
+      entry.id === itemId ? { ...entry, lastUsedAt: new Date().toISOString() } : entry,
+    ),
+  };
+}
+
 async function copyValue(value, button, itemId = '') {
   try {
     await copyWithAutoClear(value, state.vault.settings.clipboardClearSeconds);
-    if (itemId) send(MSG.USED, { itemId }).catch(() => {});
+    if (itemId) markUsed(itemId);
     // Swapping textContent is only safe on a button whose whole content is that
     // one label. On a button built from child elements it would delete them all,
     // so those get a data attribute and let CSS do the talking.
