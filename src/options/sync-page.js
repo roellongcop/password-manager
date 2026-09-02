@@ -33,7 +33,7 @@ export function renderSync(pane, { notice }) {
       ...[
         intro(),
         conflictSection(status, notice, refresh),
-        statusSection(status),
+        statusSection(status, notice, refresh),
         projectSection(status, notice, refresh),
         accountSection(status, notice, refresh),
         adoptSection(status, notice, refresh),
@@ -42,17 +42,7 @@ export function renderSync(pane, { notice }) {
     );
   };
 
-  refresh().then(async () => {
-    // Opening the page is a natural moment to check the server; this is what the
-    // "Sync now" button used to be for.
-    try {
-      await send(MSG.SYNC_NOW);
-    } catch {
-      // Not set up, locked, or offline. The status rows say which.
-      return;
-    }
-    await refresh();
-  });
+  refresh();
   return refresh;
 }
 
@@ -72,7 +62,7 @@ function intro() {
 
 // -------------------------------------------------------------------- status
 
-function statusSection(status) {
+function statusSection(status, notice, refresh) {
   const rows = [];
   if (status.signedIn) {
     rows.push(
@@ -83,12 +73,35 @@ function statusSection(status) {
     );
   }
 
+  const syncButton = el('button', {
+    class: 'primary',
+    text: 'Sync now',
+    disabled: status.signedIn ? null : true,
+    onclick: async () => {
+      syncButton.disabled = true;
+      syncButton.textContent = 'Syncing...';
+      try {
+        const result = await send(MSG.SYNC_NOW);
+        const said = {
+          push: 'Vault uploaded.',
+          pull: 'Vault downloaded from the server.',
+          none: 'Already up to date.',
+          conflict: 'Both copies changed. Choose which one to keep.',
+        };
+        flashMessage(notice, said[result.action] || 'Sync finished.', result.action === 'conflict' ? 'warn' : 'ok');
+      } catch (error) {
+        flashMessage(notice, error.message, 'error', 0);
+      }
+      await refresh();
+    },
+  });
+
   return el('div', { class: 'section' }, [
     el('h2', { text: 'Status' }),
     el('p', {
       class: status.signedIn ? 'small muted' : 'small',
       text: status.signedIn
-        ? `Signed in as ${status.email}. Syncing runs on its own: a few seconds after a change, when the vault is unlocked, when this page is opened, and every five minutes.`
+        ? `Signed in as ${status.email}.`
         : status.configured
           ? 'Not signed in yet. Sync is off.'
           : 'Not set up yet. Sync is off.',
@@ -97,6 +110,7 @@ function statusSection(status) {
     status.lastError
       ? el('p', { class: 'notice error', style: 'margin-top:10px', text: status.lastError })
       : null,
+    el('div', { class: 'row', style: 'margin-top:12px' }, [syncButton]),
   ]);
 }
 
@@ -329,7 +343,7 @@ function helpSection() {
       }),
       el('p', {
         class: 'small muted',
-        text: 'On the second computer: install Keyring, enter the same project details, sign in with the same sync account, then use "Open the synced vault" once with your master password.',
+        text: 'On the second computer: install Keyring, set the same master password, enter the same project details, sign in with the same sync account, then Sync now.',
       }),
     ]),
   ]);
