@@ -126,7 +126,6 @@ function projectSection(status, notice, refresh) {
   const config = status.config || {};
   const apiKey = el('input', { type: 'text', value: config.apiKey || '', placeholder: 'AIzaSy...', autocomplete: 'off', spellcheck: 'false' });
   const projectId = el('input', { type: 'text', value: config.projectId || '', placeholder: 'my-vault-1a2b3', autocomplete: 'off', spellcheck: 'false' });
-  const device = el('input', { type: 'text', value: config.deviceName || status.deviceName || '', autocomplete: 'off' });
 
   // The console hands over a whole config snippet, so take it whole rather than
   // making someone pick two values out of it on every computer they set up.
@@ -151,19 +150,13 @@ function projectSection(status, notice, refresh) {
     el('div', { class: 'field' }, [el('label', { text: 'Web API key' }), apiKey]),
     el('div', { class: 'field' }, [el('label', { text: 'Project ID' }), projectId]),
 
-    el('div', { class: 'field' }, [
-      el('label', { text: 'Name for this computer' }),
-      device,
-      el('span', { class: 'small muted', text: 'Anything you like. It is recorded with each upload, so the other computer can see where the vault came from.' }),
-    ]),
-
     el('button', {
       class: 'primary',
       text: 'Save project details',
       onclick: async () => {
         try {
           await send(MSG.SYNC_CONFIGURE, {
-            config: { apiKey: apiKey.value, projectId: projectId.value, deviceName: device.value },
+            config: { apiKey: apiKey.value, projectId: projectId.value },
           });
           flashMessage(notice, 'Project details saved.', 'ok');
         } catch (error) {
