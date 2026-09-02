@@ -13,6 +13,7 @@ import {
   download,
   readFile,
   flashMessage,
+  typeChip,
 } from '../ui/common.js';
 import {
   newItem,
@@ -368,6 +369,7 @@ function renderList() {
             el('span', { class: 'name', text: item.name || 'Untitled' }),
             el('span', { class: 'sub', text: subtitleFor(item) }),
           ]),
+          typeChip(item),
           hasTotp(item) && item.type !== 'totp'
             ? el('span', { class: 'code-badge', title: 'Has a 2FA code', text: '2FA' })
             : null,
@@ -384,7 +386,7 @@ function renderList() {
 }
 
 function subtitleFor(item) {
-  if (item.type === 'note') return 'Secure note';
+  if (item.type === 'note') return item.folder || 'Secure note';
   if (item.type === 'totp') return item.username || 'Authenticator code';
   if (item.type === 'card') {
     const digits = String(item.number || '').replace(/\D/g, '');

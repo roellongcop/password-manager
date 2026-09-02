@@ -71,6 +71,22 @@ export function relativeDate(value) {
   return formatDate(value).split(',')[0];
 }
 
+// Short, uppercase, and the same words the toolbar buttons use.
+export const TYPE_CHIP_LABELS = Object.freeze({
+  login: 'LOGIN',
+  note: 'NOTE',
+  card: 'CARD',
+  totp: 'CODE',
+});
+
+export function typeChip(item) {
+  return el('span', {
+    class: 'type-chip',
+    dataset: { type: item.type },
+    text: TYPE_CHIP_LABELS[item.type] || String(item.type || '').toUpperCase(),
+  });
+}
+
 export function domainIconLetter(item) {
   const source = item.name || (item.uris || [])[0]?.uri || item.username || '?';
   const letter = String(source).replace(/^https?:\/\//, '').trim()[0];

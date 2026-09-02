@@ -10,6 +10,7 @@ import {
   domainIconLetter,
   tintFor,
   flashMessage,
+  typeChip,
 } from '../ui/common.js';
 import {
   searchItems,
@@ -165,13 +166,14 @@ function entryRow(item, matchesSite) {
           text: summary.username || labelForType(item),
         }),
       ]),
+      typeChip(item),
       matchesSite ? el('span', { class: 'badge', text: 'FILL' }) : null,
     ],
   );
 }
 
 function labelForType(item) {
-  if (item.type === 'note') return 'Secure note';
+  if (item.type === 'note') return item.folder || 'Secure note';
   if (item.type === 'totp') return 'Authenticator code';
   if (item.type === 'card') return item.number ? maskCard(item.number) : 'Payment card';
   return 'No username';
