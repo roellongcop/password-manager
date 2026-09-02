@@ -108,9 +108,11 @@ with the same sync account, then use **Open the synced vault** and give it the
 master password once. A vault made locally has its own random salt, so that first
 download is what puts both machines on one file.
 
-Syncing is manual: nothing goes up or comes down until you press **Sync now** on
-the Sync page, which also shows what is on the server, when it last ran, and
-whether this machine has changes that have not been sent.
+Saving uploads: a few seconds after any change the encrypted file goes up on its
+own. Downloading is manual — press **Sync now** on the Sync page to take what
+another machine has published. An automatic download would replace what you had
+just typed, so it waits to be asked. An upload that finds the server already ahead
+stops, and the page says so.
 
 The copy on the server wins. If this machine has edits that never uploaded and the
 other one has published since, those edits are replaced and the manager says so.

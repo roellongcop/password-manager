@@ -17,6 +17,9 @@ let hooks = {
   broadcast: () => {},
 };
 
+const DEBOUNCE_MS = 4000;
+
+let debounceTimer = null;
 let running = null;
 
 export function configure(next) {
@@ -36,6 +39,8 @@ async function getSession() {
 const EMPTY_STATE = Object.freeze({
   revision: 0,
   dirty: false,
+  // The server has a version this computer has not taken yet.
+  behind: false,
   lastSyncedAt: '',
   lastError: '',
 });
@@ -137,25 +142,36 @@ export async function status() {
 
 // ---------------------------------------------------------------- the exchange
 
-// Syncing is manual, so this only records that there is something to send. The
-// Sync page reads it back as "Unsent changes".
+// A save uploads itself a few seconds later. Downloads stay manual: an automatic
+// one could replace what was just typed, which is not a thing to do behind
+// someone's back.
 export async function markDirty() {
   const session = await getSession();
   if (!session) return;
   await setState({ dirty: true });
+  scheduleUpload();
+}
+
+function scheduleUpload() {
+  clearTimeout(debounceTimer);
+  // Batch a burst of edits into one upload; the worker usually outlives this,
+  // and if it does not, the dirty flag survives and Sync now still sends it.
+  debounceTimer = setTimeout(() => {
+    syncNow({ pushOnly: true }).catch(() => {});
+  }, DEBOUNCE_MS);
 }
 
 // One at a time. Two overlapping runs would race on the revision counter and
 // could push a stale blob over a fresh one.
-export function syncNow() {
+export function syncNow(options = {}) {
   if (running) return running;
-  running = runSync().finally(() => {
+  running = runSync(options).finally(() => {
     running = null;
   });
   return running;
 }
 
-async function runSync() {
+async function runSync({ pushOnly = false } = {}) {
   const { config, session } = await activeSession();
   if (!(await hooks.isUnlocked())) {
     throw new Error('Unlock the vault before syncing.');
@@ -166,8 +182,16 @@ async function runSync() {
     const remote = await sync.fetchRemote(config, session);
     const action = sync.decideSync(state, remote);
 
+    // An automatic upload never turns into a download. The edits stay marked
+    // unsent and the Sync page says the server is ahead.
+    if (pushOnly && action === 'pull') {
+      await setState({ behind: true, lastError: '' });
+      hooks.broadcast({ type: 'sync:changed' });
+      return { action: 'behind' };
+    }
+
     if (action === 'none') {
-      await setState({ lastError: '', lastSyncedAt: new Date().toISOString() });
+      await setState({ behind: false, lastError: '', lastSyncedAt: new Date().toISOString() });
       hooks.broadcast({ type: 'sync:changed' });
       return { action: 'none' };
     }
@@ -180,6 +204,7 @@ async function runSync() {
       await setState({
         revision: remote.revision,
         dirty: false,
+        behind: false,
         lastError: '',
         lastSyncedAt: new Date().toISOString(),
       });
@@ -201,6 +226,7 @@ async function runSync() {
     await setState({
       revision,
       dirty: false,
+      behind: false,
       lastError: '',
       lastSyncedAt: new Date().toISOString(),
     });
@@ -229,6 +255,7 @@ export async function adoptRemote(password) {
   await setState({
     revision: remote.revision,
     dirty: false,
+    behind: false,
     lastError: '',
     lastSyncedAt: new Date().toISOString(),
   });
