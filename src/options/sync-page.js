@@ -27,14 +27,18 @@ export function renderSync(pane, { notice }) {
       return;
     }
     body.textContent = '';
+    // Sections that do not apply return null, and append() would render that as
+    // the word "null" rather than skipping it.
     body.append(
-      intro(),
-      conflictSection(status, notice, refresh),
-      statusSection(status, notice, refresh),
-      projectSection(status, notice, refresh),
-      accountSection(status, notice, refresh),
-      adoptSection(status, notice, refresh),
-      helpSection(),
+      ...[
+        intro(),
+        conflictSection(status, notice, refresh),
+        statusSection(status, notice, refresh),
+        projectSection(status, notice, refresh),
+        accountSection(status, notice, refresh),
+        adoptSection(status, notice, refresh),
+        helpSection(),
+      ].filter(Boolean),
     );
   };
 
