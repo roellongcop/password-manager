@@ -9,7 +9,11 @@
   const TEXT_TYPES = ['text', 'email', 'tel', 'url', ''];
 
   const USERNAME_HINTS = /user|email|e-mail|login|account|identifi|signin|handle|phone|mobile/;
-  const NOT_USERNAME_HINTS = /search|query|coupon|promo|zip|postal|address|city|card|cvv|amount|quantity/;
+
+  // Deliberately not a bare "address": "Email address" is the single most common
+  // label a login field has, and vetoing it threw away the field entirely.
+  const NOT_USERNAME_HINTS =
+    /search|query|coupon|promo|zip|postcode|postal|street|billing|shipping|city|county|card ?number|cvv|amount|quantity/;
   const OTP_HINTS = /otp|one-?time|2fa|two-?factor|totp|auth(?:entication)?code|verification|verify|security ?code|passcode/;
 
   function isTextish(input) {
@@ -44,7 +48,6 @@
 
   function scoreUsername(input, passwordField) {
     const text = KEYRING.attributeText(input);
-    if (NOT_USERNAME_HINTS.test(text)) return -1;
 
     let score = 0;
     const autocomplete = (input.getAttribute('autocomplete') || '').toLowerCase();
@@ -52,6 +55,11 @@
     if (autocomplete.includes('email')) score += 40;
     if ((input.getAttribute('type') || '').toLowerCase() === 'email') score += 30;
     if (USERNAME_HINTS.test(text)) score += 25;
+
+    // The veto only applies when nothing positive was found. A field that says
+    // it is a username -- by type, autocomplete or name -- is one, whatever else
+    // its label happens to mention.
+    if (score === 0 && NOT_USERNAME_HINTS.test(text)) return -1;
 
     if (passwordField) {
       // Prefer whatever sits immediately above the password box.

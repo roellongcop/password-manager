@@ -167,7 +167,7 @@ node tests/run.mjs
 The same suite runs in a browser at `tests/test.html`, and `tests/forms.html` holds
 login forms in the shapes the detector has to handle (plain, no `<form>`, decoy
 fields, two-step, shadow DOM, late-rendered, one-time code, sign-up, unlabelled,
-iframe). Serve
+"Email address", iframe). Serve
 them rather than opening from disk:
 
 ```bash

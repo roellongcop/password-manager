@@ -189,7 +189,23 @@
     </section>
 
     <section>
-      <h2>10. Inside an iframe</h2>
+      <h2>10. Label says "Email address"</h2>
+      <p class="hint">
+        The commonest login label there is. It must not be mistaken for a postal
+        address field and discarded.
+      </p>
+      <form id="emailaddr">
+        <label for="ea-user">Email address</label>
+        <input id="ea-user" name="email" type="email" placeholder="you@example.com" />
+        <label for="ea-pass">Password</label>
+        <input id="ea-pass" name="password" type="password" />
+        <button type="submit">Sign in</button>
+        <output id="emailaddr-out"></output>
+      </form>
+    </section>
+
+    <section>
+      <h2>11. Inside an iframe</h2>
       <p class="hint">Same-origin iframe; the content script runs in it as well.</p>
       <iframe src="iframe-login.html" title="Login in an iframe"></iframe>
     </section>
@@ -230,6 +246,11 @@
       document.getElementById('signup').addEventListener('submit', (event) => {
         event.preventDefault();
         report('signup-out', 'n-user', 'n-pass', 'n-confirm');
+      });
+
+      document.getElementById('emailaddr').addEventListener('submit', (event) => {
+        event.preventDefault();
+        report('emailaddr-out', 'ea-user', 'ea-pass');
       });
 
       document.getElementById('bare').addEventListener('submit', (event) => {
