@@ -1,7 +1,7 @@
 // The Sync page. Everything here talks to the service worker; this file never
 // touches the vault or the master password itself.
 
-import { MSG, send, el, flashMessage, formatDate, relativeDate } from '../ui/common.js';
+import { MSG, send, el, flashMessage, flashAfterReload, formatDate, relativeDate } from '../ui/common.js';
 import { parseFirebaseConfig } from '../lib/sync.js';
 
 const RULES = `rules_version = '2';
@@ -131,12 +131,12 @@ function conflictSection(status, notice, refresh) {
 
   const choose = async (choice) => {
     try {
-      await send(MSG.SYNC_RESOLVE, { choice });
-      flashMessage(
-        notice,
-        choice === 'local' ? 'This computer’s copy is now the one on the server.' : 'The copy from the server is now on this computer.',
-        'ok',
-      );
+      const result = await send(MSG.SYNC_RESOLVE, { choice });
+      // Taking the server copy reloads this page, so that message is left for
+      // the reload to show rather than flashed into a page about to vanish.
+      if (result.action !== 'pull') {
+        flashMessage(notice, 'This computer’s copy is now the one on the server.', 'ok');
+      }
     } catch (error) {
       flashMessage(notice, error.message, 'error', 0);
     }
@@ -308,7 +308,7 @@ function adoptSection(status, notice, refresh) {
           try {
             await send(MSG.SYNC_ADOPT, { password: password.value });
             password.value = '';
-            flashMessage(notice, 'This computer now holds the synced vault.', 'ok');
+            flashAfterReload('This computer now holds the synced vault.');
             location.reload();
           } catch (error) {
             flashMessage(notice, error.message, 'error', 0);

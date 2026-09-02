@@ -13,6 +13,8 @@ import {
   download,
   readFile,
   flashMessage,
+  flashAfterReload,
+  showPendingFlash,
   typeChip,
   downloadBlob,
   fileSlug,
@@ -81,6 +83,7 @@ async function boot() {
     return;
   }
   await load();
+  showPendingFlash(notice);
 }
 
 async function load() {
@@ -2050,7 +2053,11 @@ chrome.runtime.onMessage.addListener((message) => {
   if (message?.type === 'state:locked') location.reload();
   // A pull swaps the whole vault underneath this page, so start it over rather
   // than leave a half-stale list and a draft of an item that may no longer exist.
-  if (message?.type === 'sync:pulled') location.reload();
+  if (message?.type === 'sync:pulled') {
+    // Say so on the other side of the reload, or the vault silently changes.
+    flashAfterReload('The vault was replaced with the copy from the server.');
+    location.reload();
+  }
 });
 
 boot().catch((error) => {

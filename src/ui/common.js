@@ -146,3 +146,29 @@ export function flashMessage(node, message, kind = 'ok', ms = 3500) {
     node.__timer = setTimeout(() => node.classList.add('hidden'), ms);
   }
 }
+
+// A message that has to survive a page reload. The options page reloads itself
+// when a sync replaces the vault underneath it, which would otherwise swallow
+// the very message explaining why everything just changed.
+const PENDING_FLASH = 'keyring.pendingFlash';
+
+export function flashAfterReload(message, kind = 'ok') {
+  try {
+    sessionStorage.setItem(PENDING_FLASH, JSON.stringify({ message, kind }));
+  } catch {
+    // Storage unavailable; the message is simply lost.
+  }
+}
+
+export function showPendingFlash(node) {
+  let entry;
+  try {
+    const raw = sessionStorage.getItem(PENDING_FLASH);
+    if (!raw) return;
+    sessionStorage.removeItem(PENDING_FLASH);
+    entry = JSON.parse(raw);
+  } catch {
+    return;
+  }
+  if (entry && entry.message) flashMessage(node, entry.message, entry.kind || 'ok', 6000);
+}
