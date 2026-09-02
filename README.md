@@ -85,8 +85,7 @@ network. Turned on, Keyring keeps the vault in a Firebase project **you** own, s
 second computer gets the same items.
 
 What is uploaded is the encrypted blob and nothing else — the same file the
-extension keeps on disk, plus a revision number and the name of the machine that
-wrote it. Encryption and decryption happen locally, the master password never
+extension keeps on disk, plus the time and the name of the machine that wrote it. Encryption and decryption happen locally, the master password never
 leaves the machine, and Google (or anyone else who reaches the document) sees one
 opaque string.
 
@@ -108,16 +107,16 @@ with the same sync account, then use **Open the synced vault** and give it the
 master password once. A vault made locally has its own random salt, so that first
 download is what puts both machines on one file.
 
-Saving uploads: a few seconds after any change the encrypted file goes up as the
-next version, on top of whatever is there. A save is never left behind.
+Saving uploads: a few seconds after any change the encrypted file goes up, over
+whatever is there. A save is never left behind.
 
 Downloading is manual — press **Check for updates** on the Sync page to take what
 another machine has published. An automatic download could replace what you had
 just typed, so it waits to be asked.
 
-Between those two, the last write wins wholesale: uploading replaces the entire
-document, so changes made on the other machine and not taken here first are lost.
-Check for updates before editing if the other machine has been busy.
+There is no merging. Each transfer moves the whole file, so the last upload wins:
+items added on the other machine and not taken here first are lost. Take an update
+before editing if the other machine has been busy.
 
 ## Import and export
 

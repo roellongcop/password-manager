@@ -37,7 +37,6 @@ async function getSession() {
 }
 
 const EMPTY_STATE = Object.freeze({
-  revision: 0,
   dirty: false,
   lastSyncedAt: '',
   lastError: '',
@@ -92,7 +91,7 @@ export async function saveConfig(config) {
 
   const previous = await getConfig();
   await local.set(KEYS.SYNC_CONFIG, cleaned);
-  // Pointing at a different project means the old revision number means nothing.
+  // Pointing at a different project means the old sync state means nothing.
   if (previous && previous.projectId !== cleaned.projectId) {
     await local.remove(KEYS.SYNC_SESSION);
     await local.set(KEYS.SYNC_STATE, { ...EMPTY_STATE });
@@ -111,9 +110,10 @@ export async function signIn(email, password, { register = false } = {}) {
 
   await local.set(KEYS.SYNC_SESSION, session);
   // A different account owns a different document, so nothing about the old one
-  // carries over. The local vault is left alone and is pushed or merged below.
+  // carries over. Deliberately not marked as needing an upload: on a second
+  // computer that would send its empty vault over the real one.
   if (!previous || previous.uid !== session.uid) {
-    await local.set(KEYS.SYNC_STATE, { ...EMPTY_STATE, dirty: true });
+    await local.set(KEYS.SYNC_STATE, { ...EMPTY_STATE });
   }
   return { ok: true, email: session.email };
 }
@@ -140,9 +140,9 @@ export async function status() {
 
 // ---------------------------------------------------------------- the exchange
 
-// A save uploads itself a few seconds later, and that upload wins: it becomes the
-// next revision over whatever is on the server. Downloads stay manual, because an
-// automatic one could replace what was just typed.
+// A save uploads itself a few seconds later, over whatever is on the server.
+// Downloads stay manual, because an automatic one could replace what was just
+// typed.
 export async function markDirty() {
   const session = await getSession();
   if (!session) return;
@@ -159,8 +159,7 @@ function scheduleUpload() {
   }, DEBOUNCE_MS);
 }
 
-// One at a time. Two overlapping runs would race on the revision counter and
-// could push a stale blob over a fresh one.
+// One at a time. Two overlapping runs could push a stale blob over a fresh one.
 export function syncNow(options = {}) {
   if (running) return running;
   running = runSync(options).finally(() => {
@@ -176,56 +175,35 @@ async function runSync({ pushOnly = false } = {}) {
   }
 
   try {
-    const state = await getState();
     const remote = await sync.fetchRemote(config, session);
-    const action = sync.decideSync(state, remote);
 
-    // An automatic run never turns into a download. A save always goes up, even
-    // when the server has moved on: it takes the next revision over what is
-    // there. Otherwise the edit would sit unsent until some later download threw
-    // it away -- which is the one thing a save must never do.
-    const direction = pushOnly && action === 'pull' ? 'push' : action;
-
-    if (direction === 'none') {
-      await setState({ lastError: '', lastSyncedAt: new Date().toISOString() });
-      hooks.broadcast({ type: 'sync:changed' });
-      return { action: 'none' };
-    }
+    // Two moves, no bookkeeping between them. A save uploads, always, over
+    // whatever is there -- so nothing you type is ever left behind. The button
+    // downloads, always. The cost is that an upload replaces the whole document,
+    // so take an update before editing if the other computer has been busy.
+    const direction = pushOnly || !remote ? 'push' : 'pull';
 
     if (direction === 'pull') {
       // Refuses if the blob does not open with the key already in memory, so a
       // vault sealed under a different master password can never land silently.
-      const replacedUnsent = state.dirty;
       await hooks.applyRemoteBlob(remote.blob);
-      await setState({
-        revision: remote.revision,
-        dirty: false,
-        lastError: '',
-        lastSyncedAt: new Date().toISOString(),
-      });
+      await setState({ dirty: false, lastError: '', lastSyncedAt: new Date().toISOString() });
       // Distinct from state:changed: the whole vault was replaced, so any page
       // showing it has to start over rather than merge what it had.
-      hooks.broadcast({ type: 'sync:pulled', replacedUnsent });
-      return { action: 'pull', revision: remote.revision, replacedUnsent };
+      hooks.broadcast({ type: 'sync:pulled' });
+      return { action: 'pull' };
     }
 
     const blob = await hooks.readBlob();
     if (!blob) throw new Error('There is no vault to upload yet.');
-    const revision = sync.nextRevision(remote);
     await sync.pushRemote(config, session, {
       blob,
-      revision,
       updatedAt: new Date().toISOString(),
       device: config.deviceName || deviceName(),
     });
-    await setState({
-      revision,
-      dirty: false,
-      lastError: '',
-      lastSyncedAt: new Date().toISOString(),
-    });
+    await setState({ dirty: false, lastError: '', lastSyncedAt: new Date().toISOString() });
     hooks.broadcast({ type: 'sync:changed' });
-    return { action: 'push', revision };
+    return { action: 'push' };
   } catch (error) {
     await setState({ lastError: error.message });
     hooks.broadcast({ type: 'sync:changed' });
@@ -246,12 +224,7 @@ export async function adoptRemote(password) {
   if (!remote) throw new Error('There is nothing on the server yet.');
 
   await hooks.adoptBlob(remote.blob, password);
-  await setState({
-    revision: remote.revision,
-    dirty: false,
-    lastError: '',
-    lastSyncedAt: new Date().toISOString(),
-  });
+  await setState({ dirty: false, lastError: '', lastSyncedAt: new Date().toISOString() });
   hooks.broadcast({ type: 'sync:pulled' });
-  return { ok: true, revision: remote.revision };
+  return { ok: true };
 }

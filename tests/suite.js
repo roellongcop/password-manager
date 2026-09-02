@@ -756,7 +756,7 @@ test('sync writes to the signed-in account document only', async () => {
   await sync.pushRemote(
     SYNC_CONFIG,
     SYNC_SESSION,
-    { blob: { v: 1, ct: 'cipher' }, revision: 4, updatedAt: '2026-01-01T00:00:00.000Z', device: 'Windows' },
+    { blob: { v: 1, ct: 'cipher' }, updatedAt: '2026-01-01T00:00:00.000Z', device: 'Windows' },
     fetchImpl,
   );
 
@@ -765,7 +765,6 @@ test('sync writes to the signed-in account document only', async () => {
   equal(call.options.headers.authorization, 'Bearer token-1', 'sent the id token');
 
   const sent = JSON.parse(call.options.body);
-  equal(sent.fields.revision.integerValue, '4', 'revision travelled');
   equal(JSON.parse(sent.fields.blob.stringValue).ct, 'cipher', 'the blob travelled verbatim');
 });
 
@@ -775,7 +774,7 @@ test('sync uploads ciphertext and nothing else', async () => {
   const { blob } = await vaultCrypto.create(vault, 'correct horse battery staple');
 
   const { fetchImpl, calls } = stubFetch([{ body: {} }]);
-  await sync.pushRemote(SYNC_CONFIG, SYNC_SESSION, { blob, revision: 1, updatedAt: '', device: '' }, fetchImpl);
+  await sync.pushRemote(SYNC_CONFIG, SYNC_SESSION, { blob, updatedAt: '', device: '' }, fetchImpl);
 
   const body = calls[0].options.body;
   for (const secret of ['hunter2', 'ada', 'GitHub']) {
@@ -789,7 +788,6 @@ test('sync reads a document back into a blob', async () => {
       body: {
         fields: {
           blob: { stringValue: '{"v":1,"ct":"cipher"}' },
-          revision: { integerValue: '7' },
           updatedAt: { stringValue: '2026-01-02T03:04:05.000Z' },
           device: { stringValue: 'Mac (Chrome)' },
         },
@@ -797,7 +795,6 @@ test('sync reads a document back into a blob', async () => {
     },
   ]);
   const remote = await sync.fetchRemote(SYNC_CONFIG, SYNC_SESSION, fetchImpl);
-  equal(remote.revision, 7, 'revision parsed');
   equal(remote.blob.ct, 'cipher', 'blob parsed');
   equal(remote.device, 'Mac (Chrome)', 'device parsed');
 });
@@ -816,21 +813,6 @@ test('sync turns a Firebase error code into something readable', async () => {
     message = error.message;
   }
   equal(message, 'Wrong sync password.', 'explained the failure');
-});
-
-test('sync decides which way each case goes', () => {
-  const remote = (revision) => ({ revision, blob: {}, updatedAt: '', device: '' });
-
-  equal(sync.decideSync({ revision: 0, dirty: true }, null), 'push', 'seeds an empty server');
-  equal(sync.decideSync({ revision: 3, dirty: false }, remote(3)), 'none', 'nothing to do');
-  equal(sync.decideSync({ revision: 3, dirty: true }, remote(3)), 'push', 'local edits go up');
-  equal(sync.decideSync({ revision: 3, dirty: false }, remote(5)), 'pull', 'their edits come down');
-  // Both sides moved: the server wins, and the unsent edits here are lost.
-  equal(sync.decideSync({ revision: 3, dirty: true }, remote(5)), 'pull', 'the server wins');
-  equal(sync.decideSync({ revision: 5, dirty: false }, remote(3)), 'push', 'a lost push is retried');
-
-  equal(sync.nextRevision(null), 1, 'first upload is revision 1');
-  equal(sync.nextRevision(remote(9)), 10, 'revisions increase');
 });
 
 test('sync reads the two values it needs out of a pasted Firebase config', () => {

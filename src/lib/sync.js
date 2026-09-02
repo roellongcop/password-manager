@@ -132,11 +132,10 @@ export async function refreshSession(config, refreshToken, fetchImpl = fetch) {
 
 // Firestore's REST shape wraps every value in its type. Only three fields are
 // stored, so the mapping is written out rather than generalised.
-function toDocument({ blob, revision, updatedAt, device }) {
+function toDocument({ blob, updatedAt, device }) {
   return {
     fields: {
       blob: { stringValue: JSON.stringify(blob) },
-      revision: { integerValue: String(revision) },
       updatedAt: { stringValue: updatedAt },
       device: { stringValue: device || '' },
     },
@@ -154,7 +153,6 @@ function fromDocument(document) {
   }
   return {
     blob,
-    revision: Number(fields.revision?.integerValue || 0),
     updatedAt: fields.updatedAt?.stringValue || '',
     device: fields.device?.stringValue || '',
   };
@@ -200,27 +198,4 @@ export async function pushRemote(config, session, entry, fetchImpl = fetch) {
     throw new Error(payload?.error?.message || `Could not upload the vault (${response.status}).`);
   }
   return fromDocument(payload);
-}
-
-// ------------------------------------------------------------------ deciding
-
-// Which way the next sync should go.
-//
-// `revision` is the revision this machine last agreed with the server on, and
-// `dirty` says whether the vault has changed since.
-//
-// When the server has moved on, its copy wins -- including over edits here that
-// never made it up. That is one simple rule instead of a prompt, and the cost of
-// it is that unsent changes on this machine are discarded.
-export function decideSync(local, remote) {
-  // Nothing on the server yet: this device seeds it.
-  if (!remote) return 'push';
-  if (remote.revision === local.revision) return local.dirty ? 'push' : 'none';
-  if (remote.revision > local.revision) return 'pull';
-  // The server is behind us, which means our last push did not land.
-  return 'push';
-}
-
-export function nextRevision(remote) {
-  return (remote ? remote.revision : 0) + 1;
 }

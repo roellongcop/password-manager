@@ -53,8 +53,8 @@ function intro() {
     }),
     el('ul', { class: 'small muted', style: 'margin-top:8px' }, [
       el('li', { text: 'Both computers use one master password, because the file is sealed with it. On the second computer, open the vault once with "Open the synced vault" below.' }),
-      el('li', { text: 'The copy on the server wins. If this computer has edits that never uploaded and the other one has published since, those edits are replaced.' }),
-      el('li', { text: 'A save always goes up and takes the next version, so nothing you type here is left behind. Updates from the other computer only come down when you ask for them.' }),
+      el('li', { text: 'A save always goes up, over whatever is on the server, so nothing you type here is left behind.' }),
+      el('li', { text: 'Updates from the other computer only come down when you ask for them, and they replace this vault wholesale. Take an update before editing if the other computer has been busy.' }),
       el('li', { text: 'Sync only runs while the vault is unlocked.' }),
       el('li', { text: 'Turning sync off leaves the vault on this computer exactly as it is.' }),
     ]),
@@ -68,9 +68,6 @@ function statusSection(status, notice, refresh) {
   if (status.signedIn) {
     rows.push(
       infoRow('Last synced', status.lastSyncedAt ? `${relativeDate(status.lastSyncedAt)} (${formatDate(status.lastSyncedAt)})` : 'never'),
-      // The last revision this computer agreed with the server on -- not a live
-      // reading of the server, which would mean a fetch every time the page draws.
-      infoRow('Version here', status.revision ? `#${status.revision}` : 'never synced'),
       infoRow('Unsent changes', status.dirty ? 'yes' : 'no'),
       infoRow('This device', status.deviceName),
     );

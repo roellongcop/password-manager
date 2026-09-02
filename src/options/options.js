@@ -2055,12 +2055,7 @@ chrome.runtime.onMessage.addListener((message) => {
   // than leave a half-stale list and a draft of an item that may no longer exist.
   if (message?.type === 'sync:pulled') {
     // Say so on the other side of the reload, or the vault silently changes.
-    flashAfterReload(
-      message.replacedUnsent
-        ? 'The copy from the server replaced this vault, including changes here that had not been uploaded.'
-        : 'The vault was replaced with the copy from the server.',
-      message.replacedUnsent ? 'warn' : 'ok',
-    );
+    flashAfterReload('The vault was replaced with the copy from the server.');
     location.reload();
   }
 });
