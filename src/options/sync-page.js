@@ -32,7 +32,6 @@ export function renderSync(pane, { notice }) {
     body.append(
       ...[
         intro(),
-        conflictSection(status, notice, refresh),
         statusSection(status, notice, refresh),
         projectSection(status, notice, refresh),
         accountSection(status, notice, refresh),
@@ -87,7 +86,6 @@ function statusSection(status, notice, refresh) {
           push: 'Vault uploaded.',
           pull: 'Vault downloaded from the server.',
           none: 'Already up to date.',
-          conflict: 'Both copies changed. Choose which one to keep.',
         };
         flashMessage(notice, said[result.action] || 'Sync finished.', 'ok');
       } catch (error) {
