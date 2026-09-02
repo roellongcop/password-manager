@@ -39,8 +39,6 @@ async function getSession() {
 const EMPTY_STATE = Object.freeze({
   revision: 0,
   dirty: false,
-  // The server has a version this computer has not taken yet.
-  behind: false,
   lastSyncedAt: '',
   lastError: '',
 });
@@ -142,9 +140,9 @@ export async function status() {
 
 // ---------------------------------------------------------------- the exchange
 
-// A save uploads itself a few seconds later. Downloads stay manual: an automatic
-// one could replace what was just typed, which is not a thing to do behind
-// someone's back.
+// A save uploads itself a few seconds later, and that upload wins: it becomes the
+// next revision over whatever is on the server. Downloads stay manual, because an
+// automatic one could replace what was just typed.
 export async function markDirty() {
   const session = await getSession();
   if (!session) return;
@@ -182,21 +180,19 @@ async function runSync({ pushOnly = false } = {}) {
     const remote = await sync.fetchRemote(config, session);
     const action = sync.decideSync(state, remote);
 
-    // An automatic upload never turns into a download. The edits stay marked
-    // unsent and the Sync page says the server is ahead.
-    if (pushOnly && action === 'pull') {
-      await setState({ behind: true, lastError: '' });
-      hooks.broadcast({ type: 'sync:changed' });
-      return { action: 'behind' };
-    }
+    // An automatic run never turns into a download. A save always goes up, even
+    // when the server has moved on: it takes the next revision over what is
+    // there. Otherwise the edit would sit unsent until some later download threw
+    // it away -- which is the one thing a save must never do.
+    const direction = pushOnly && action === 'pull' ? 'push' : action;
 
-    if (action === 'none') {
-      await setState({ behind: false, lastError: '', lastSyncedAt: new Date().toISOString() });
+    if (direction === 'none') {
+      await setState({ lastError: '', lastSyncedAt: new Date().toISOString() });
       hooks.broadcast({ type: 'sync:changed' });
       return { action: 'none' };
     }
 
-    if (action === 'pull') {
+    if (direction === 'pull') {
       // Refuses if the blob does not open with the key already in memory, so a
       // vault sealed under a different master password can never land silently.
       const replacedUnsent = state.dirty;
@@ -204,7 +200,6 @@ async function runSync({ pushOnly = false } = {}) {
       await setState({
         revision: remote.revision,
         dirty: false,
-        behind: false,
         lastError: '',
         lastSyncedAt: new Date().toISOString(),
       });
@@ -226,7 +221,6 @@ async function runSync({ pushOnly = false } = {}) {
     await setState({
       revision,
       dirty: false,
-      behind: false,
       lastError: '',
       lastSyncedAt: new Date().toISOString(),
     });
@@ -255,7 +249,6 @@ export async function adoptRemote(password) {
   await setState({
     revision: remote.revision,
     dirty: false,
-    behind: false,
     lastError: '',
     lastSyncedAt: new Date().toISOString(),
   });

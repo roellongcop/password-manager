@@ -54,7 +54,7 @@ function intro() {
     el('ul', { class: 'small muted', style: 'margin-top:8px' }, [
       el('li', { text: 'Both computers use one master password, because the file is sealed with it. On the second computer, open the vault once with "Open the synced vault" below.' }),
       el('li', { text: 'The copy on the server wins. If this computer has edits that never uploaded and the other one has published since, those edits are replaced.' }),
-      el('li', { text: 'Saves upload on their own. Updates from the other computer only arrive when you ask for them, so nothing replaces what you just typed without warning.' }),
+      el('li', { text: 'A save always goes up and takes the next version, so nothing you type here is left behind. Updates from the other computer only come down when you ask for them.' }),
       el('li', { text: 'Sync only runs while the vault is unlocked.' }),
       el('li', { text: 'Turning sync off leaves the vault on this computer exactly as it is.' }),
     ]),
@@ -109,15 +109,6 @@ function statusSection(status, notice, refresh) {
           : 'Not set up yet. Sync is off.',
     }),
     ...rows,
-    // An upload that found the server ahead stops rather than downloading by
-    // itself, so say so instead of leaving the edits looking stuck.
-    status.behind
-      ? el('p', {
-          class: 'notice warn',
-          style: 'margin-top:10px',
-          text: 'Another computer has published a newer vault. Check for updates to take it — anything not yet uploaded from here will be replaced.',
-        })
-      : null,
     status.lastError
       ? el('p', { class: 'notice error', style: 'margin-top:10px', text: status.lastError })
       : null,

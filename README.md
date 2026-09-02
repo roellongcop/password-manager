@@ -108,16 +108,16 @@ with the same sync account, then use **Open the synced vault** and give it the
 master password once. A vault made locally has its own random salt, so that first
 download is what puts both machines on one file.
 
-Saving uploads: a few seconds after any change the encrypted file goes up on its
-own. Downloading is manual — press **Check for updates** on the Sync page to take what
-another machine has published. An automatic download would replace what you had
-just typed, so it waits to be asked. An upload that finds the server already ahead
-stops, and the page says so.
+Saving uploads: a few seconds after any change the encrypted file goes up as the
+next version, on top of whatever is there. A save is never left behind.
 
-The copy on the server wins. If this machine has edits that never uploaded and the
-other one has published since, those edits are replaced and the manager says so.
-One rule, no prompt — and the cost of it is that unsent changes can be lost, so
-take a backup before working offline on two machines at once.
+Downloading is manual — press **Check for updates** on the Sync page to take what
+another machine has published. An automatic download could replace what you had
+just typed, so it waits to be asked.
+
+Between those two, the last write wins wholesale: uploading replaces the entire
+document, so changes made on the other machine and not taken here first are lost.
+Check for updates before editing if the other machine has been busy.
 
 ## Import and export
 
