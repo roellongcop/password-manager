@@ -273,7 +273,9 @@ function accountSection(status, notice, refresh) {
         onclick: () => submit(MSG.SYNC_SIGNUP),
       }),
     ]),
-    status.configured ? null : el('p', { class: 'small muted', text: 'Save the project details first.' }),
+    status.configured
+      ? null
+      : el('p', { class: 'small muted', style: 'margin-top:10px', text: 'Save the project details first.' }),
   ]);
 }
 
