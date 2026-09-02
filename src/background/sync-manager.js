@@ -155,7 +155,7 @@ export async function markDirty() {
 function scheduleUpload() {
   clearTimeout(debounceTimer);
   // Batch a burst of edits into one upload; the worker usually outlives this,
-  // and if it does not, the dirty flag survives and Sync now still sends it.
+  // and if it does not, the dirty flag survives and the next check still sends it.
   debounceTimer = setTimeout(() => {
     syncNow({ pushOnly: true }).catch(() => {});
   }, DEBOUNCE_MS);

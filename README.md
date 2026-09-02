@@ -109,7 +109,7 @@ master password once. A vault made locally has its own random salt, so that firs
 download is what puts both machines on one file.
 
 Saving uploads: a few seconds after any change the encrypted file goes up on its
-own. Downloading is manual — press **Sync now** on the Sync page to take what
+own. Downloading is manual — press **Check for updates** on the Sync page to take what
 another machine has published. An automatic download would replace what you had
 just typed, so it waits to be asked. An upload that finds the server already ahead
 stops, and the page says so.

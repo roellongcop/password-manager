@@ -54,7 +54,7 @@ function intro() {
     el('ul', { class: 'small muted', style: 'margin-top:8px' }, [
       el('li', { text: 'Both computers use one master password, because the file is sealed with it. On the second computer, open the vault once with "Open the synced vault" below.' }),
       el('li', { text: 'The copy on the server wins. If this computer has edits that never uploaded and the other one has published since, those edits are replaced.' }),
-      el('li', { text: 'Saves upload on their own; downloads only happen when you press Sync now, so nothing replaces what you just typed without asking.' }),
+      el('li', { text: 'Saves upload on their own. Updates from the other computer only arrive when you ask for them, so nothing replaces what you just typed without warning.' }),
       el('li', { text: 'Sync only runs while the vault is unlocked.' }),
       el('li', { text: 'Turning sync off leaves the vault on this computer exactly as it is.' }),
     ]),
@@ -78,16 +78,16 @@ function statusSection(status, notice, refresh) {
 
   const syncButton = el('button', {
     class: 'primary',
-    text: 'Sync now',
+    text: 'Check for updates',
     disabled: status.signedIn ? null : true,
     onclick: async () => {
       syncButton.disabled = true;
-      syncButton.textContent = 'Syncing...';
+      syncButton.textContent = 'Checking...';
       try {
         const result = await send(MSG.SYNC_NOW);
         const said = {
-          push: 'Vault uploaded.',
-          pull: 'Vault downloaded from the server.',
+          push: 'Changes from this computer uploaded.',
+          pull: 'Updated with the vault from the other computer.',
           none: 'Already up to date.',
         };
         flashMessage(notice, said[result.action] || 'Sync finished.', 'ok');
@@ -103,7 +103,7 @@ function statusSection(status, notice, refresh) {
     el('p', {
       class: status.signedIn ? 'small muted' : 'small',
       text: status.signedIn
-        ? `Signed in as ${status.email}. Changes here upload on their own a few seconds after you save. Press Sync now to bring down what another computer has published.`
+        ? `Signed in as ${status.email}. Changes here upload on their own a few seconds after you save. Check for updates to bring down what another computer has published.`
         : status.configured
           ? 'Not signed in yet. Sync is off.'
           : 'Not set up yet. Sync is off.',
@@ -115,7 +115,7 @@ function statusSection(status, notice, refresh) {
       ? el('p', {
           class: 'notice warn',
           style: 'margin-top:10px',
-          text: 'Another computer has published a newer vault. Press Sync now to take it — anything not yet uploaded from here will be replaced.',
+          text: 'Another computer has published a newer vault. Check for updates to take it — anything not yet uploaded from here will be replaced.',
         })
       : null,
     status.lastError
@@ -310,7 +310,7 @@ function helpSection() {
       }),
       el('p', {
         class: 'small muted',
-        text: 'On the second computer: install Keyring, set the same master password, enter the same project details, sign in with the same sync account, then Sync now.',
+        text: 'On the second computer: install Keyring, enter the same project details, sign in with the same sync account, then use "Open the synced vault" once with your master password.',
       }),
     ]),
   ]);
