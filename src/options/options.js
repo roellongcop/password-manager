@@ -24,6 +24,7 @@ import {
   folderNames,
   passwordStrength,
   defaultSettings,
+  ITEM_TYPES,
   totpConfig,
   hasTotp,
   TOTP_DEFAULTS,
@@ -125,8 +126,19 @@ function restoreFromHash() {
   }
 
   const item = params.get('item');
-  if (item === 'new' || item === 'newcode') {
-    state.draft = newItem(item === 'newcode' ? 'totp' : 'login', {
+  // "new-<type>" is what syncHash writes; "new" and "newcode" are the older
+  // shapes the popup and other pages still link to.
+  const newType =
+    item === 'new'
+      ? 'login'
+      : item === 'newcode'
+        ? 'totp'
+        : item && item.startsWith('new-') && ITEM_TYPES.includes(item.slice(4))
+          ? item.slice(4)
+          : '';
+
+  if (newType) {
+    state.draft = newItem(newType, {
       folder: state.filter.kind === 'folder' ? state.filter.value : '',
     });
   } else if (item && getItem(state.vault, item)) {
@@ -147,7 +159,7 @@ function syncHash() {
       );
     }
     if (state.selectedId) params.set('item', state.selectedId);
-    else if (state.draft) params.set('item', state.draft.type === 'totp' ? 'newcode' : 'new');
+    else if (state.draft) params.set('item', `new-${state.draft.type}`);
   }
   if (state.query) params.set('q', state.query);
 
@@ -646,7 +658,28 @@ function passwordField(draft) {
 }
 
 function totpField(draft) {
-  const preview = el('span', { class: 'mono small muted' });
+  // The live code, large enough to read off and with its own Copy button --
+  // it used to be a line of small grey text that rewrote itself every second.
+  let current = '';
+  const codeText = el('span', { class: 'code-value mono' });
+  const remaining = el('span', { class: 'small muted' });
+  const problem = el('span', { class: 'small', style: 'color:var(--danger)' });
+
+  const preview = el('div', { class: 'code-preview', style: 'display:none' }, [
+    codeText,
+    remaining,
+    el('span', { class: 'grow' }),
+    problem,
+    el('button', {
+      class: 'icon',
+      text: 'Copy',
+      onclick: (event) => {
+        if (!current) return;
+        copyValue(current, event.currentTarget);
+      },
+    }),
+  ]);
+
   const input = el('input', {
     type: 'text',
     class: 'mono',
@@ -678,15 +711,27 @@ function totpField(draft) {
 
   async function refreshPreview() {
     if (!draft.totp) {
-      preview.textContent = '';
+      preview.style.display = 'none';
+      current = '';
       return;
     }
     try {
       const config = totpConfig(draft);
       const code = await generateTotp(config);
-      preview.textContent = `Current code ${code} · ${secondsRemaining(config.period)}s left`;
+      current = code;
+      preview.style.display = 'flex';
+      // Only touch the text when the digits change, so it is not replaced under
+      // the pointer once a second.
+      const shown = code.length === 6 ? `${code.slice(0, 3)} ${code.slice(3)}` : code;
+      if (codeText.textContent !== shown) codeText.textContent = shown;
+      remaining.textContent = `${secondsRemaining(config.period)}s left`;
+      problem.textContent = '';
     } catch {
-      preview.textContent = 'That secret is not valid base32.';
+      current = '';
+      preview.style.display = 'flex';
+      codeText.textContent = '';
+      remaining.textContent = '';
+      problem.textContent = 'That secret is not valid base32.';
     }
   }
   refreshPreview();
