@@ -104,13 +104,27 @@ export function tintFor(text) {
   return `hsl(${hue} 42% 42%)`;
 }
 
-export function download(filename, text, mime = 'application/json') {
-  const url = URL.createObjectURL(new Blob([text], { type: mime }));
+export function downloadBlob(filename, blob) {
+  const url = URL.createObjectURL(blob);
   const anchor = el('a', { href: url, download: filename });
   document.body.append(anchor);
   anchor.click();
   anchor.remove();
   setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
+export function download(filename, text, mime = 'application/json') {
+  downloadBlob(filename, new Blob([text], { type: mime }));
+}
+
+// A filename made from an item name: lowercase, no punctuation, no runs of dashes.
+export function fileSlug(text, fallback = 'item') {
+  const slug = String(text || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40);
+  return slug || fallback;
 }
 
 export function readFile(file) {

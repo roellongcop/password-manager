@@ -526,3 +526,18 @@ details > summary {
   border-radius: var(--radius);
   line-height: 0;
 }
+
+.qr-block {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin-top: 12px;
+}
+
+.qr-block > div {
+  min-width: 0;
+}
+
+.qr-block button {
+  margin-top: 10px;
+}

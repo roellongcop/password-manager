@@ -14,6 +14,8 @@ import {
   readFile,
   flashMessage,
   typeChip,
+  downloadBlob,
+  fileSlug,
 } from '../ui/common.js';
 import {
   newItem,
@@ -39,7 +41,7 @@ import {
   parseAuthenticatorExport,
   buildOtpAuthUri,
 } from '../lib/totp.js';
-import { decodeImageData, encodeSvg } from '../lib/qr.js';
+import { decodeImageData, encodeSvg, encodeMatrix } from '../lib/qr.js';
 import {
   analyze,
   rowsToItems,
@@ -697,6 +699,7 @@ function totpField(draft) {
   // The live code, large enough to read off and with its own Copy button --
   // it used to be a line of small grey text that rewrote itself every second.
   let current = '';
+  let valid = false;
   const codeText = el('span', { class: 'code-value mono' });
   const remaining = el('span', { class: 'small muted' });
   const problem = el('span', { class: 'small', style: 'color:var(--danger)' });
@@ -749,6 +752,8 @@ function totpField(draft) {
     if (!draft.totp) {
       preview.style.display = 'none';
       current = '';
+      valid = false;
+      refreshQr();
       return;
     }
     try {
@@ -762,13 +767,16 @@ function totpField(draft) {
       if (codeText.textContent !== shown) codeText.textContent = shown;
       remaining.textContent = `${secondsRemaining(config.period)}s left`;
       problem.textContent = '';
+      valid = true;
     } catch {
       current = '';
       preview.style.display = 'flex';
       codeText.textContent = '';
       remaining.textContent = '';
       problem.textContent = 'That secret is not valid base32.';
+      valid = false;
     }
+    refreshQr();
   }
   refreshPreview();
   stopTotpTimer();
@@ -803,60 +811,132 @@ function totpField(draft) {
     },
   });
 
-  // The reverse of reading a QR: show one, so the same account can be set up on
-  // a phone or a second authenticator.
-  const qrHolder = el('div', { style: 'display:none; margin-top:10px' });
-  let qrShown = false;
+  // The reverse of reading a QR: always show one for the current settings, so the
+  // same account can be set up on a phone or a second authenticator.
+  const qrImage = el('div', { class: 'qr-code' });
+  const qrHint = el('p', { class: 'small muted', style: 'margin:0' });
+  const qrActions = el('div', { style: 'display:none' }, [
+    el('button', {
+      text: 'Download QR',
+      onclick: (event) => downloadQr(event.currentTarget),
+    }),
+  ]);
 
-  const qrButton = el('button', {
-    text: 'Show QR code',
-    onclick: (event) => {
-      qrShown = !qrShown;
-      event.currentTarget.textContent = qrShown ? 'Hide QR code' : 'Show QR code';
-      qrHolder.style.display = qrShown ? 'block' : 'none';
-      qrHolder.textContent = '';
-      if (!qrShown) return;
+  const qrHolder = el('div', { class: 'qr-block' }, [
+    qrImage,
+    el('div', {}, [
+      qrHint,
+      el('p', {
+        class: 'small',
+        style: 'color:var(--warn); margin:8px 0 0',
+        text: 'This QR holds the secret itself. Anyone who scans it can generate your codes.',
+      }),
+      qrActions,
+    ]),
+  ]);
 
-      if (!draft.totp) {
-        qrHolder.append(el('p', { class: 'small muted', text: 'Add a secret first.' }));
-        return;
+  // Rebuilt whenever the link the QR stands for actually changes, which covers
+  // the name, account and advanced settings as well as the secret -- the ticker
+  // below calls this every second, so no field needs to report in.
+  let currentUri = '';
+  let currentKey = null;
+
+  function qrUri() {
+    if (!draft.totp || !valid) return '';
+    const config = totpConfig(draft);
+    return buildOtpAuthUri({
+      secret: config.secret,
+      issuer: draft.name || '',
+      account: draft.username || '',
+      algorithm: config.algorithm,
+      digits: config.digits,
+      period: config.period,
+    });
+  }
+
+  function refreshQr() {
+    const uri = qrUri();
+    // Keyed on more than the link: with no QR to show, the reason still decides
+    // what the hint says, and an empty link cannot tell those apart.
+    const key = uri || (draft.totp ? 'invalid' : 'empty');
+    if (key === currentKey) return;
+    currentKey = key;
+    currentUri = uri;
+
+    if (!uri) {
+      qrImage.textContent = '';
+      qrImage.style.display = 'none';
+      qrActions.style.display = 'none';
+      qrHint.textContent = draft.totp
+        ? 'A QR will appear once the secret is valid.'
+        : 'Add a secret and a QR will appear here.';
+      return;
+    }
+
+    try {
+      qrImage.innerHTML = encodeSvg(uri, { size: 176 });
+      qrImage.style.display = '';
+      qrActions.style.display = '';
+      qrHint.textContent = 'Scan this to add the same account to another authenticator.';
+    } catch (error) {
+      qrImage.textContent = '';
+      qrImage.style.display = 'none';
+      qrActions.style.display = 'none';
+      qrHint.textContent = error.message;
+    }
+  }
+
+  function downloadQr(button) {
+    if (!currentUri) return;
+    try {
+      const { matrix, dimension } = encodeMatrix(currentUri);
+      const quiet = 4;
+      const scale = 10;
+      const size = (dimension + quiet * 2) * scale;
+
+      const canvas = document.createElement('canvas');
+      canvas.width = size;
+      canvas.height = size;
+      const context = canvas.getContext('2d');
+      context.fillStyle = '#ffffff';
+      context.fillRect(0, 0, size, size);
+      context.fillStyle = '#000000';
+      for (let y = 0; y < dimension; y++) {
+        for (let x = 0; x < dimension; x++) {
+          if (matrix[y * dimension + x]) {
+            context.fillRect((x + quiet) * scale, (y + quiet) * scale, scale, scale);
+          }
+        }
       }
-      try {
-        const config = totpConfig(draft);
-        const uri = buildOtpAuthUri({
-          secret: config.secret,
-          issuer: draft.type === 'totp' ? draft.name : draft.name || '',
-          account: draft.username || '',
-          algorithm: config.algorithm,
-          digits: config.digits,
-          period: config.period,
-        });
-        const image = el('div', { class: 'qr-code', html: encodeSvg(uri, { size: 190 }) });
-        qrHolder.append(
-          image,
-          el('p', {
-            class: 'small',
-            style: 'color:var(--warn); margin:8px 0 0; max-width:260px',
-            text: 'This QR holds the secret itself. Anyone who scans it can generate your codes, so do not show it on a shared screen.',
-          }),
+
+      canvas.toBlob((blob) => {
+        if (!blob) return;
+        downloadBlob(`keyring-${fileSlug(draft.name, 'code')}-2fa.png`, blob);
+        flashMessage(
+          notice,
+          'QR saved. It holds the secret, so delete it once the other device has scanned it.',
+          'warn',
+          9000,
         );
-      } catch (error) {
-        qrHolder.append(el('p', { class: 'small', style: 'color:var(--danger)', text: error.message }));
-      }
-    },
-  });
+      }, 'image/png');
+    } catch (error) {
+      flashMessage(notice, error.message, 'error', 8000);
+    }
+  }
+
+  refreshQr();
 
   return el('div', { class: 'field' }, [
     el('label', { text: 'Authenticator secret (TOTP)' }),
     input,
     preview,
+    qrHolder,
     el('p', {
       class: 'small muted',
-      style: 'margin:10px 0 5px',
-      text: 'Read it from a saved QR image, or show the one for this account:',
+      style: 'margin:12px 0 5px',
+      text: 'Or read a secret from a saved QR image:',
     }),
-    el('div', { class: 'row' }, [imageInput, qrButton]),
-    qrHolder,
+    imageInput,
   ]);
 }
 

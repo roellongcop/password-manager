@@ -59,9 +59,10 @@ Three ways to add a code:
   Manage -> Import & export, where a screenshot pasted with Ctrl+V works too.
 - **By hand**, pasting the secret or the otpauth:// link.
 
-A saved code can go the other way too: **Show QR code** in the editor renders it as
-a scannable otpauth QR, for setting the same account up on a phone or a second
-authenticator. That QR carries the secret itself, so treat it like the secret.
+A saved code goes the other way too: the editor shows it as a scannable otpauth QR,
+updating as you edit, with **Download QR** to save it as a PNG. Use it to set the
+same account up on a phone or a second authenticator. That QR carries the secret
+itself, so treat the image like the secret.
 
 QR reading and writing are both written from scratch in
 [src/lib/qr.js](src/lib/qr.js) rather than pulled from a library, so nothing
