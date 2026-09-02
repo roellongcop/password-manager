@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Keyring</title>
+    <link rel="stylesheet" href="../ui/base.css" />
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <!-- No vault on this profile yet -->
+    <section id="view-setup" class="view hidden">
+      <div class="hero">
+        <div class="logo" aria-hidden="true">K</div>
+        <h1>Keyring</h1>
+        <p class="muted">A vault that never leaves this computer.</p>
+        <button id="setup-start" class="primary wide">Create your vault</button>
+      </div>
+    </section>
+
+    <!-- Locked -->
+    <section id="view-locked" class="view hidden">
+      <form id="unlock-form" class="hero">
+        <div class="logo" aria-hidden="true">K</div>
+        <h1>Keyring is locked</h1>
+        <div id="unlock-error" class="notice error hidden"></div>
+        <div class="field">
+          <label for="master">Master password</label>
+          <input
+            id="master"
+            type="password"
+            autocomplete="off"
+            autofocus
+            placeholder="Master password"
+          />
+        </div>
+        <button id="unlock" type="submit" class="primary wide">Unlock</button>
+        <p class="small muted center">
+          Auto-locks when idle and whenever the browser closes.
+        </p>
+      </form>
+    </section>
+
+    <!-- Unlocked -->
+    <section id="view-main" class="view hidden">
+      <header class="topbar">
+        <input
+          id="search"
+          type="search"
+          class="search"
+          placeholder="Search vault"
+          autocomplete="off"
+        />
+        <button id="add" class="icon" title="Add a login">+</button>
+        <button id="lock" class="icon" title="Lock now">Lock</button>
+      </header>
+
+      <div id="notice" class="notice hidden"></div>
+      <div id="pending" class="pending hidden"></div>
+
+      <main id="scroller" class="scroller">
+        <div id="list"></div>
+        <div id="detail" class="hidden"></div>
+        <div id="generator" class="hidden"></div>
+      </main>
+
+      <nav class="tabs">
+        <button id="tab-vault" class="tab" data-tab="vault">Vault</button>
+        <button id="tab-generator" class="tab" data-tab="generator">Generator</button>
+        <button id="tab-settings" class="tab" data-tab="settings">Manage</button>
+      </nav>
+    </section>
+
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Keyring tests</title>
+    <link rel="stylesheet" href="../src/ui/base.css" />
+    <style>
+      body {
+        padding: 28px;
+        max-width: 760px;
+        margin: 0 auto;
+      }
+      .result {
+        display: flex;
+        gap: 10px;
+        padding: 7px 10px;
+        border-radius: 8px;
+        font-size: 13px;
+      }
+      .result.pass {
+        color: var(--accent);
+      }
+      .result.fail {
+        background: var(--danger-soft);
+        color: var(--danger);
+        font-weight: 600;
+      }
+      .result .why {
+        color: var(--muted);
+        font-weight: 400;
+      }
+      .tally {
+        font-size: 18px;
+        font-weight: 700;
+        margin: 18px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Keyring library tests</h1>
+    <p class="muted small">
+      Serve this directory (<code>node tools/serve.js</code> from the project root) — module
+      imports do not work over <code>file://</code>. The same suite runs on the
+      command line with <code>node tests/run.mjs</code>.
+    </p>
+    <div class="tally" id="tally">Running…</div>
+    <div id="results"></div>
+
+    <script type="module">
+      import { runSuite } from './suite.js';
+
+      const results = await runSuite();
+      const container = document.getElementById('results');
+      const passed = results.filter((result) => result.ok).length;
+
+      document.getElementById('tally').textContent =
+        `${passed}/${results.length} passing`;
+      document.getElementById('tally').style.color =
+        passed === results.length ? 'var(--accent)' : 'var(--danger)';
+
+      for (const result of results) {
+        const row = document.createElement('div');
+        row.className = `result ${result.ok ? 'pass' : 'fail'}`;
+        const mark = document.createElement('span');
+        mark.textContent = result.ok ? '✓' : '✕';
+        const name = document.createElement('span');
+        name.textContent = result.name;
+        row.append(mark, name);
+        if (!result.ok) {
+          const why = document.createElement('span');
+          why.className = 'why';
+          why.textContent = result.message;
+          row.append(why);
+        }
+        container.append(row);
+      }
+    </script>
+  </body>
+</html>

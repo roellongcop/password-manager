@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Keyring form fixtures</title>
+    <style>
+      body {
+        font: 15px/1.5 -apple-system, 'Segoe UI', Roboto, sans-serif;
+        max-width: 780px;
+        margin: 0 auto;
+        padding: 30px 20px 90px;
+        background: #f6f7f9;
+        color: #101418;
+      }
+      section {
+        background: #fff;
+        border: 1px solid #dde3ea;
+        border-radius: 12px;
+        padding: 18px;
+        margin-bottom: 20px;
+      }
+      h2 {
+        font-size: 15px;
+        margin: 0 0 4px;
+      }
+      p.hint {
+        margin: 0 0 14px;
+        color: #5b6572;
+        font-size: 13px;
+      }
+      label {
+        display: block;
+        font-size: 12px;
+        color: #5b6572;
+        margin: 10px 0 4px;
+      }
+      input {
+        width: 100%;
+        padding: 9px 11px;
+        border: 1px solid #dde3ea;
+        border-radius: 8px;
+        font: inherit;
+      }
+      button {
+        margin-top: 12px;
+        padding: 8px 14px;
+        border-radius: 8px;
+        border: 1px solid #2f6f4f;
+        background: #2f6f4f;
+        color: #fff;
+        font: inherit;
+        cursor: pointer;
+      }
+      iframe {
+        width: 100%;
+        height: 250px;
+        border: 1px dashed #b9c3cf;
+        border-radius: 8px;
+      }
+      output {
+        display: block;
+        margin-top: 10px;
+        font-size: 13px;
+        color: #2f6f4f;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Keyring form fixtures</h1>
+    <p class="hint">
+      Serve this file (<code>node tools/serve.js</code>) rather than opening it from disk:
+      content scripts only run on http/https unless file access is enabled for the
+      extension. Each section is a login shape the detector has to cope with.
+    </p>
+
+    <section>
+      <h2>1. Plain form</h2>
+      <p class="hint">The easy case: a real &lt;form&gt; with labelled fields.</p>
+      <form id="plain">
+        <label for="p-user">Email</label>
+        <input id="p-user" name="email" type="email" autocomplete="username" />
+        <label for="p-pass">Password</label>
+        <input id="p-pass" name="password" type="password" autocomplete="current-password" />
+        <button type="submit">Sign in</button>
+        <output id="plain-out"></output>
+      </form>
+    </section>
+
+    <section>
+      <h2>2. No form element</h2>
+      <p class="hint">Inputs in bare divs, submitted by a click handler.</p>
+      <div>
+        <label for="d-user">Username</label>
+        <input id="d-user" type="text" placeholder="username" />
+        <label for="d-pass">Password</label>
+        <input id="d-pass" type="password" placeholder="password" />
+        <button id="d-submit" type="button">Log in</button>
+        <output id="divless-out"></output>
+      </div>
+    </section>
+
+    <section>
+      <h2>3. Decoys</h2>
+      <p class="hint">
+        A search box and a promo code sit next to the real fields; neither should be
+        picked as the username.
+      </p>
+      <form id="decoy">
+        <label for="s-search">Search</label>
+        <input id="s-search" name="search" type="text" placeholder="Search the site" />
+        <label for="s-user">Account email</label>
+        <input id="s-user" name="login_email" type="text" />
+        <label for="s-pass">Password</label>
+        <input id="s-pass" type="password" />
+        <label for="s-promo">Promo code</label>
+        <input id="s-promo" name="promo" type="text" />
+        <button type="submit">Continue</button>
+        <output id="decoy-out"></output>
+      </form>
+    </section>
+
+    <section>
+      <h2>4. Two-step login</h2>
+      <p class="hint">Username first, password on the next screen — the classic Google shape.</p>
+      <div id="step1">
+        <label for="t-user">Email</label>
+        <input id="t-user" type="email" autocomplete="username" />
+        <button id="t-next" type="button">Next</button>
+      </div>
+      <div id="step2" hidden>
+        <label for="t-pass">Password</label>
+        <input id="t-pass" type="password" autocomplete="current-password" />
+        <button id="t-in" type="button">Sign in</button>
+      </div>
+      <output id="two-out"></output>
+    </section>
+
+    <section>
+      <h2>5. Shadow DOM</h2>
+      <p class="hint">Fields inside an open shadow root, as a web component would render them.</p>
+      <div id="shadow-host"></div>
+    </section>
+
+    <section>
+      <h2>6. Rendered late (SPA)</h2>
+      <p class="hint">The form does not exist at load; it appears two seconds later.</p>
+      <div id="late"></div>
+    </section>
+
+    <section>
+      <h2>7. One-time code</h2>
+      <p class="hint">A 2FA screen on its own, with autocomplete="one-time-code".</p>
+      <form id="otp-form">
+        <label for="otp">Authentication code</label>
+        <input id="otp" type="text" autocomplete="one-time-code" maxlength="6" inputmode="numeric" />
+        <button type="submit">Verify</button>
+        <output id="otp-out"></output>
+      </form>
+    </section>
+
+    <section>
+      <h2>8. Sign-up (two password boxes)</h2>
+      <p class="hint">Generating a password should fill both boxes.</p>
+      <form id="signup">
+        <label for="n-user">Choose a username</label>
+        <input id="n-user" type="text" autocomplete="username" />
+        <label for="n-pass">New password</label>
+        <input id="n-pass" type="password" autocomplete="new-password" />
+        <label for="n-confirm">Confirm password</label>
+        <input id="n-confirm" type="password" autocomplete="new-password" />
+        <button type="submit">Create account</button>
+        <output id="signup-out"></output>
+      </form>
+    </section>
+
+    <section>
+      <h2>9. Inside an iframe</h2>
+      <p class="hint">Same-origin iframe; the content script runs in it as well.</p>
+      <iframe src="iframe-login.html" title="Login in an iframe"></iframe>
+    </section>
+
+    <script>
+      function report(outputId, ...ids) {
+        const values = ids.map((id) => `${id}=${JSON.stringify(document.getElementById(id).value)}`);
+        document.getElementById(outputId).textContent = 'Submitted: ' + values.join('  ');
+      }
+
+      document.getElementById('plain').addEventListener('submit', (event) => {
+        event.preventDefault();
+        report('plain-out', 'p-user', 'p-pass');
+      });
+
+      document.getElementById('d-submit').addEventListener('click', () => {
+        report('divless-out', 'd-user', 'd-pass');
+      });
+
+      document.getElementById('decoy').addEventListener('submit', (event) => {
+        event.preventDefault();
+        report('decoy-out', 's-user', 's-pass');
+      });
+
+      document.getElementById('t-next').addEventListener('click', () => {
+        document.getElementById('step1').hidden = true;
+        document.getElementById('step2').hidden = false;
+      });
+      document.getElementById('t-in').addEventListener('click', () => {
+        report('two-out', 't-user', 't-pass');
+      });
+
+      document.getElementById('otp-form').addEventListener('submit', (event) => {
+        event.preventDefault();
+        report('otp-out', 'otp');
+      });
+
+      document.getElementById('signup').addEventListener('submit', (event) => {
+        event.preventDefault();
+        report('signup-out', 'n-user', 'n-pass', 'n-confirm');
+      });
+
+      // 5. Shadow DOM
+      const shadow = document.getElementById('shadow-host').attachShadow({ mode: 'open' });
+      shadow.innerHTML = `
+        <style>
+          label { display:block; font-size:12px; color:#5b6572; margin:10px 0 4px; }
+          input { width:100%; padding:9px 11px; border:1px solid #dde3ea; border-radius:8px; font:inherit; }
+          button { margin-top:12px; padding:8px 14px; border-radius:8px; border:1px solid #2f6f4f;
+                   background:#2f6f4f; color:#fff; font:inherit; cursor:pointer; }
+          output { display:block; margin-top:10px; font-size:13px; color:#2f6f4f; }
+        </style>
+        <label>Username</label>
+        <input id="sh-user" type="text" name="username" />
+        <label>Password</label>
+        <input id="sh-pass" type="password" name="password" />
+        <button type="button">Sign in</button>
+        <output></output>
+      `;
+      shadow.querySelector('button').addEventListener('click', () => {
+        shadow.querySelector('output').textContent =
+          `Submitted: ${shadow.getElementById('sh-user').value} / ${shadow.getElementById('sh-pass').value}`;
+      });
+
+      // 6. Rendered late
+      setTimeout(() => {
+        document.getElementById('late').innerHTML = `
+          <label for="l-user">Email</label>
+          <input id="l-user" type="email" autocomplete="username" />
+          <label for="l-pass">Password</label>
+          <input id="l-pass" type="password" />
+          <button id="l-in" type="button">Sign in</button>
+          <output id="late-out"></output>
+        `;
+        document.getElementById('l-in').addEventListener('click', () => {
+          report('late-out', 'l-user', 'l-pass');
+        });
+      }, 2000);
+    </script>
+  </body>
+</html>

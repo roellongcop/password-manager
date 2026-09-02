@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Set up Keyring</title>
+    <link rel="stylesheet" href="../ui/base.css" />
+    <style>
+      body {
+        display: grid;
+        place-items: center;
+        min-height: 100vh;
+        padding: 32px 16px;
+      }
+      main {
+        width: 100%;
+        max-width: 460px;
+      }
+      .logo {
+        width: 52px;
+        height: 52px;
+        border-radius: 15px;
+        background: var(--accent);
+        color: #fff;
+        font-size: 26px;
+        font-weight: 700;
+        display: grid;
+        place-items: center;
+        margin-bottom: 18px;
+      }
+      ul {
+        margin: 0 0 18px;
+        padding-left: 18px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      li {
+        margin-bottom: 5px;
+      }
+      .ack {
+        display: flex;
+        gap: 9px;
+        align-items: flex-start;
+        font-size: 13px;
+        color: var(--text);
+        margin: 14px 0 18px;
+      }
+      .ack input {
+        width: auto;
+        margin-top: 2px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="logo" aria-hidden="true">K</div>
+      <h1>Create your vault</h1>
+      <p class="muted">
+        One master password unlocks everything. It is the only key, and it is never
+        stored anywhere.
+      </p>
+
+      <div id="notice" class="notice hidden"></div>
+
+      <form id="form" class="card">
+        <div class="field">
+          <label for="password">Master password</label>
+          <input id="password" type="password" autocomplete="new-password" autofocus />
+          <div class="meter" id="meter"><span></span></div>
+          <p class="small muted" id="strength" style="margin: 6px 0 0">
+            Use a long passphrase you can remember without writing down.
+          </p>
+        </div>
+
+        <div class="field">
+          <label for="confirm">Confirm master password</label>
+          <input id="confirm" type="password" autocomplete="new-password" />
+        </div>
+
+        <button type="button" id="suggest" class="ghost small" style="padding: 0 0 8px">
+          Suggest a passphrase
+        </button>
+
+        <ul>
+          <li>The vault is encrypted with AES-256-GCM and stays on this computer.</li>
+          <li>Nothing is uploaded, and there is no account to sign in to.</li>
+          <li>Auto-locks when idle and whenever the browser closes.</li>
+        </ul>
+
+        <label class="ack">
+          <input id="ack" type="checkbox" />
+          <span>
+            I understand that if I forget this password, the vault cannot be
+            recovered by anyone, including me.
+          </span>
+        </label>
+
+        <button id="create" class="primary" style="width: 100%" disabled>
+          Create vault
+        </button>
+      </form>
+
+      <p class="small muted" style="margin-top: 14px">
+        Already have an exported Keyring file?
+        <a href="../options/options.html#restore">Restore it here</a>.
+      </p>
+    </main>
+
+    <script type="module" src="onboarding.js"></script>
+  </body>
+</html>

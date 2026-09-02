@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Keyring</title>
+    <link rel="stylesheet" href="../ui/base.css" />
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <!-- Locked gate -->
+    <section id="gate" class="gate hidden">
+      <form id="gate-form" class="card gate-card">
+        <div class="logo" aria-hidden="true">K</div>
+        <h1>Keyring is locked</h1>
+        <div id="gate-error" class="notice error hidden"></div>
+        <div class="field">
+          <label for="gate-password">Master password</label>
+          <input id="gate-password" type="password" autocomplete="off" autofocus />
+        </div>
+        <button class="primary" style="width: 100%">Unlock</button>
+      </form>
+    </section>
+
+    <div id="app" class="app hidden">
+      <aside class="sidebar">
+        <div class="brand">
+          <span class="logo small" aria-hidden="true">K</span>
+          <span>Keyring</span>
+        </div>
+
+        <nav id="filters" class="nav"></nav>
+
+        <div class="nav-title">Folders</div>
+        <nav id="folders" class="nav"></nav>
+
+        <div class="sidebar-foot">
+          <nav id="pages" class="nav"></nav>
+          <button id="lock" class="ghost" style="width: 100%">Lock vault</button>
+        </div>
+      </aside>
+
+      <main class="main">
+        <header class="toolbar">
+          <input id="search" type="search" class="search" placeholder="Search vault" />
+          <div class="row">
+            <button id="new-login" class="primary">New login</button>
+            <button id="new-note">Note</button>
+            <button id="new-card">Card</button>
+          </div>
+        </header>
+
+        <div id="notice" class="notice hidden"></div>
+
+        <div class="panes">
+          <section id="list-pane" class="list-pane"></section>
+          <section id="editor-pane" class="editor-pane"></section>
+        </div>
+
+        <section id="page-pane" class="page-pane hidden"></section>
+      </main>
+    </div>
+
+    <script type="module" src="options.js"></script>
+  </body>
+</html>

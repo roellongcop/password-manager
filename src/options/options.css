@@ -1,0 +1,404 @@
+html,
+body {
+  height: 100%;
+}
+
+.gate {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  padding: 24px;
+}
+
+.gate-card {
+  width: 100%;
+  max-width: 380px;
+  text-align: center;
+}
+
+.gate-card .field {
+  text-align: left;
+}
+
+.logo {
+  width: 48px;
+  height: 48px;
+  margin: 0 auto 14px;
+  border-radius: 14px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 24px;
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+}
+
+.logo.small {
+  width: 26px;
+  height: 26px;
+  margin: 0;
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+.app {
+  display: grid;
+  grid-template-columns: 232px 1fr;
+  height: 100vh;
+}
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 16px 12px;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-weight: 700;
+  font-size: 15px;
+  padding: 0 6px 12px;
+}
+
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.nav button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border-color: transparent;
+  padding: 7px 10px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.nav button:hover {
+  background: var(--surface-2);
+  border-color: transparent;
+  color: var(--text);
+}
+
+.nav button[data-active='1'] {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 650;
+}
+
+.nav .count {
+  font-size: 11px;
+  opacity: 0.75;
+}
+
+.nav-title {
+  padding: 14px 10px 5px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.sidebar-foot {
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.toolbar {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.search {
+  max-width: 380px;
+  background: var(--surface-2);
+  border-color: transparent;
+}
+
+#notice {
+  margin: 12px 18px 0;
+}
+
+.panes {
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(280px, 380px) 1fr;
+  min-height: 0;
+}
+
+.list-pane {
+  overflow-y: auto;
+  border-right: 1px solid var(--border);
+  padding: 10px;
+}
+
+/* The editor is a column: a scrolling body with the actions as a real footer, so
+   the buttons never float over the form. */
+.editor-pane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.editor-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 22px 26px 28px;
+}
+
+.page-pane {
+  flex: 1;
+  overflow-y: auto;
+  padding: 22px 26px 60px;
+}
+
+.entry {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.entry:hover {
+  background: var(--surface-2);
+}
+
+.entry[data-active='1'] {
+  background: var(--accent-soft);
+}
+
+.avatar {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  color: #fff;
+  font-weight: 700;
+  font-size: 14px;
+  display: grid;
+  place-items: center;
+}
+
+.entry .lines {
+  min-width: 0;
+  flex: 1;
+}
+
+.entry .name {
+  display: block;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.entry .sub {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.star {
+  color: var(--warn);
+  flex: none;
+}
+
+.empty {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--muted);
+}
+
+.editor-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.section {
+  max-width: 640px;
+  margin-bottom: 28px;
+}
+
+.section h2 {
+  margin-bottom: 4px;
+}
+
+.section > p {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.uri-row,
+.custom-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+/* Inputs carry width:100% from base.css, which in a flex row makes the first one
+   claim everything and starves the rest. Give each one an explicit share. */
+.uri-row > input,
+.uri-row > select,
+.custom-row > input {
+  min-width: 0;
+}
+
+.custom-row > input:first-child {
+  flex: 1 1 0;
+}
+
+.custom-row > .grow {
+  flex: 2 1 0;
+}
+
+.uri-row select {
+  max-width: 190px;
+}
+
+.inline-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.editor-actions {
+  flex: none;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 12px 26px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+
+table.map {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  margin-bottom: 14px;
+}
+
+table.map th,
+table.map td {
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+table.map td.sample {
+  color: var(--muted);
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+table.map select {
+  min-width: 150px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: var(--surface-2);
+  border-radius: 999px;
+  padding: 4px 6px 4px 12px;
+  font-size: 13px;
+  margin: 0 6px 6px 0;
+}
+
+.chip button {
+  padding: 2px 7px;
+  border-radius: 999px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+}
+
+/* In-page confirmations. window.prompt/confirm are unreliable in extension pages
+   -- a suppressed dialog just returns null and the action silently does nothing. */
+.dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(10, 14, 20, 0.5);
+}
+
+.dialog-card {
+  width: 100%;
+  max-width: 430px;
+  padding: 20px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.dialog-card h2 {
+  margin-bottom: 6px;
+}
+
+.dialog-card .row {
+  margin-top: 16px;
+  justify-content: flex-end;
+}
+
+.danger-zone {
+  border: 1px solid var(--danger);
+  border-radius: var(--radius);
+  padding: 16px;
+}
+
+.history-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}

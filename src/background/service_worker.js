@@ -1,0 +1,670 @@
+// The trusted core. Everything that touches the decrypted vault happens here.
+//
+// MV3 kills this worker after ~30 seconds of idle, which would drop the master
+// key and force a re-unlock every time. The key therefore lives in
+// chrome.storage.session with TRUSTED_CONTEXTS access: memory only, never written
+// to disk, cleared when the browser closes, unreachable from any content script.
+
+import * as vaultCrypto from '../lib/crypto.js';
+import { KEYS, local, session, ensureSessionAccessLevel } from '../lib/storage.js';
+import * as model from '../lib/vault.js';
+import * as matcher from '../lib/matcher.js';
+import { MSG } from '../lib/messages.js';
+import { generatePassword, generatePassphrase } from '../lib/generator.js';
+import { generateTotp } from '../lib/totp.js';
+
+const AUTOLOCK_ALARM = 'keyring:autolock';
+const CLIPBOARD_ALARM = 'keyring:clipboard';
+const OFFSCREEN_PATH = 'src/background/offscreen.html';
+
+// Cached only for the lifetime of this worker. The blob on disk is the truth.
+let cachedVault = null;
+let cachedBlob = null;
+
+// ---------------------------------------------------------------- vault access
+
+async function getBlob() {
+  if (!cachedBlob) cachedBlob = await local.get(KEYS.BLOB, null);
+  return cachedBlob;
+}
+
+async function getRawKey() {
+  const encoded = await session.get(KEYS.SESSION_KEY, null);
+  return encoded ? vaultCrypto.fromBase64(encoded) : null;
+}
+
+async function isLocked() {
+  return (await getRawKey()) === null;
+}
+
+async function getVault() {
+  if (cachedVault) return cachedVault;
+  const rawKey = await getRawKey();
+  if (!rawKey) return null;
+  const blob = await getBlob();
+  if (!blob) return null;
+  cachedVault = model.migrate(await vaultCrypto.open(blob, rawKey));
+  return cachedVault;
+}
+
+async function persist(vault) {
+  const rawKey = await getRawKey();
+  if (!rawKey) throw new Error('Vault is locked.');
+  const blob = await getBlob();
+  const sealed = await vaultCrypto.reseal(vault, rawKey, blob);
+  await local.set(KEYS.BLOB, sealed);
+  cachedBlob = sealed;
+  cachedVault = vault;
+  return vault;
+}
+
+async function requireVault() {
+  const vault = await getVault();
+  if (!vault) throw new Error('Vault is locked.');
+  return vault;
+}
+
+// ------------------------------------------------------------------ lock state
+
+async function lock() {
+  cachedVault = null;
+  await session.remove(KEYS.SESSION_KEY);
+  await session.remove(KEYS.UNLOCK_EXPIRES);
+  await chrome.alarms.clear(AUTOLOCK_ALARM);
+  await refreshBadgeForActiveTab();
+  broadcast({ type: 'state:locked' });
+}
+
+async function touch() {
+  // After the worker restarts, cachedVault is empty but the vault may still be
+  // unlocked -- read it back so the user's own timeout is honoured, not the default.
+  const vault = cachedVault || (await getVault());
+  const minutes = vault?.settings?.autoLockMinutes ?? model.defaultSettings().autoLockMinutes;
+  if (!minutes || minutes <= 0) {
+    await session.remove(KEYS.UNLOCK_EXPIRES);
+    await chrome.alarms.clear(AUTOLOCK_ALARM);
+    return;
+  }
+  await session.set(KEYS.UNLOCK_EXPIRES, Date.now() + minutes * 60_000);
+  await chrome.alarms.create(AUTOLOCK_ALARM, { periodInMinutes: 1 });
+}
+
+async function checkAutoLock() {
+  if (await isLocked()) return;
+  const expires = await session.get(KEYS.UNLOCK_EXPIRES, 0);
+  if (expires && Date.now() >= expires) await lock();
+}
+
+// --------------------------------------------------------------------- actions
+
+async function createVault(password) {
+  if (await getBlob()) throw new Error('A vault already exists on this profile.');
+  const fresh = model.emptyVault();
+  const { blob, rawKey } = await vaultCrypto.create(fresh, password);
+  await local.set(KEYS.BLOB, blob);
+  cachedBlob = blob;
+  cachedVault = fresh;
+  await session.set(KEYS.SESSION_KEY, vaultCrypto.toBase64(rawKey));
+  await touch();
+  await refreshBadgeForActiveTab();
+  return { ok: true };
+}
+
+async function unlockVault(password) {
+  const blob = await getBlob();
+  if (!blob) throw new Error('No vault on this profile yet.');
+  const { vault, rawKey } = await vaultCrypto.unlock(blob, password);
+  cachedVault = model.migrate(vault);
+  await session.set(KEYS.SESSION_KEY, vaultCrypto.toBase64(rawKey));
+  await touch();
+  await refreshBadgeForActiveTab();
+  broadcast({ type: 'state:unlocked' });
+  return { ok: true };
+}
+
+async function changeMasterPassword(currentPassword, nextPassword) {
+  const blob = await getBlob();
+  if (!blob) throw new Error('No vault on this profile yet.');
+  const { vault } = await vaultCrypto.unlock(blob, currentPassword);
+  const { blob: nextBlob, rawKey } = await vaultCrypto.create(model.migrate(vault), nextPassword);
+  await local.set(KEYS.BLOB, nextBlob);
+  cachedBlob = nextBlob;
+  cachedVault = model.migrate(vault);
+  await session.set(KEYS.SESSION_KEY, vaultCrypto.toBase64(rawKey));
+  await touch();
+  return { ok: true };
+}
+
+// Import replaces the whole vault from an exported blob, so it doubles as restore.
+async function importBlob(blob, password) {
+  vaultCrypto.assertBlob(blob);
+  const { vault, rawKey } = await vaultCrypto.unlock(blob, password);
+  await local.set(KEYS.BLOB, blob);
+  cachedBlob = blob;
+  cachedVault = model.migrate(vault);
+  await session.set(KEYS.SESSION_KEY, vaultCrypto.toBase64(rawKey));
+  await touch();
+  return { ok: true, itemCount: cachedVault.items.length };
+}
+
+async function wipeEverything() {
+  cachedVault = null;
+  cachedBlob = null;
+  await session.clear();
+  await local.clear();
+  await chrome.alarms.clear(AUTOLOCK_ALARM);
+  await refreshBadgeForActiveTab();
+  return { ok: true };
+}
+
+// ------------------------------------------------------------------- autofill
+
+// Content scripts only ever learn that a match exists and what it is called.
+async function matchesFor(pageUrl) {
+  if (await isLocked()) return { locked: true, items: [] };
+  const vault = await requireVault();
+  const domain = matcher.registrableDomain(pageUrl);
+  if (domain && (vault.settings.neverDomains || []).includes(domain)) {
+    return { locked: false, items: [], never: true };
+  }
+  const ranked = matcher.rankMatches(vault.items, pageUrl);
+  return {
+    locked: false,
+    showIcon: vault.settings.showInlineIcon !== false,
+    items: ranked.map(model.publicSummary),
+  };
+}
+
+// Secrets leave here for exactly one item, and only after the item is confirmed
+// to match the URL of the frame that asked.
+async function credentialFor(itemId, frameUrl) {
+  const vault = await requireVault();
+  const item = model.getItem(vault, itemId);
+  if (!item) throw new Error('That item no longer exists.');
+  if (!matcher.itemMatches(item, frameUrl)) {
+    throw new Error('That item is not saved for this site.');
+  }
+
+  const page = matcher.parseUrl(frameUrl);
+  if (page && page.protocol === 'http:' && !item.allowInsecure) {
+    const error = new Error('This page is not encrypted (http). Enable "allow on insecure pages" for this item to fill it here.');
+    error.code = 'insecure';
+    throw error;
+  }
+
+  await persist(model.touchItem(vault, itemId));
+
+  let totpCode = '';
+  if (item.totp) {
+    try {
+      totpCode = await generateTotp({ secret: item.totp });
+    } catch {
+      totpCode = '';
+    }
+  }
+  return { username: item.username, password: item.password, totp: totpCode };
+}
+
+// ------------------------------------------------------------------- capture
+
+// Two-screen logins type the username on one page and the password on the next,
+// so the username is remembered per tab until the password shows up.
+async function rememberUsername(tabId, username) {
+  if (typeof tabId !== 'number' || !username) return { ok: false };
+  const remembered = (await session.get(KEYS.LAST_USERNAME, {})) || {};
+  remembered[tabId] = { username, at: Date.now() };
+  await session.set(KEYS.LAST_USERNAME, remembered);
+  return { ok: true };
+}
+
+async function recallUsername(tabId) {
+  if (typeof tabId !== 'number') return '';
+  const remembered = (await session.get(KEYS.LAST_USERNAME, {})) || {};
+  const entry = remembered[tabId];
+  if (!entry) return '';
+  return Date.now() - entry.at < 10 * 60_000 ? entry.username : '';
+}
+
+async function offerCapture(payload, tab) {
+  const vault = await getVault();
+  const url = payload.url || tab?.url;
+  const domain = matcher.registrableDomain(url);
+  if (!payload.username) {
+    payload = { ...payload, username: await recallUsername(tab?.id) };
+  }
+
+  if (!vault) {
+    // Locked: hold it so the popup can offer to save it after the next unlock.
+    await session.set(KEYS.PENDING_CAPTURE, { ...payload, url, at: Date.now() });
+    return { action: 'pending' };
+  }
+
+  if (!vault.settings.offerToSave) return { action: 'none' };
+  if (domain && (vault.settings.neverDomains || []).includes(domain)) {
+    return { action: 'none' };
+  }
+
+  const decision = decideCapture(vault, payload, url);
+  if (decision.action === 'none') return decision;
+
+  await session.set(KEYS.PENDING_CAPTURE, { ...payload, url, at: Date.now() });
+  if (tab) {
+    chrome.tabs
+      .sendMessage(tab.id, {
+        type: MSG.CAPTURE_PROMPT,
+        action: decision.action,
+        itemId: decision.itemId || '',
+        itemName: decision.itemName || '',
+        username: payload.username || '',
+        domain: domain || '',
+      })
+      .catch(() => {});
+  }
+  return decision;
+}
+
+function decideCapture(vault, payload, url) {
+  const password = payload.password || '';
+  const username = (payload.username || '').trim();
+  if (!password) return { action: 'none' };
+
+  const candidates = matcher.rankMatches(vault.items, url);
+  const sameUser = candidates.find(
+    (item) => (item.username || '').toLowerCase() === username.toLowerCase(),
+  );
+
+  if (sameUser) {
+    if (sameUser.password === password) return { action: 'none' };
+    return { action: 'update', itemId: sameUser.id, itemName: sameUser.name };
+  }
+
+  // No username captured but exactly one credential saved here: treat a changed
+  // password as an update to it rather than a stray new entry.
+  if (!username && candidates.length === 1) {
+    if (candidates[0].password === password) return { action: 'none' };
+    return { action: 'update', itemId: candidates[0].id, itemName: candidates[0].name };
+  }
+
+  return { action: 'new' };
+}
+
+// The password comes from the pending capture held in session storage, never
+// from the caller, so it does not make a round trip through the web page.
+async function saveCapture({ action, itemId, name }) {
+  const vault = await requireVault();
+  const pending = await session.get(KEYS.PENDING_CAPTURE, null);
+  if (!pending || !pending.password) throw new Error('There is nothing waiting to be saved.');
+  const { username, password, url } = pending;
+
+  if (action === 'update' && itemId) {
+    const existing = model.getItem(vault, itemId);
+    if (!existing) throw new Error('That item no longer exists.');
+    const updated = { ...existing, password };
+    if (username && !existing.username) updated.username = username;
+    await persist(model.upsertItem(vault, updated));
+  } else {
+    const item = model.newItem('login', {
+      name: name || matcher.suggestedName(url),
+      username: username || '',
+      password,
+      uris: url ? [{ uri: matcher.parseUrl(url)?.origin || url, matchType: 'domain' }] : [],
+    });
+    await persist(model.upsertItem(vault, item));
+  }
+
+  await session.remove(KEYS.PENDING_CAPTURE);
+  await refreshBadgeForActiveTab();
+  broadcast({ type: 'state:changed' });
+  return { ok: true };
+}
+
+async function neverForDomain(url) {
+  const vault = await requireVault();
+  const domain = matcher.registrableDomain(url);
+  if (!domain) return { ok: false };
+  const neverDomains = [...new Set([...(vault.settings.neverDomains || []), domain])];
+  await persist({ ...vault, settings: { ...vault.settings, neverDomains } });
+  await session.remove(KEYS.PENDING_CAPTURE);
+  return { ok: true, domain };
+}
+
+// ------------------------------------------------------------------ clipboard
+
+// chrome.alarms will not fire sooner than 30 seconds, so anything shorter is
+// rounded up rather than silently ignored.
+async function scheduleClipboardClear(seconds) {
+  const delay = Math.max(30, Number(seconds) || 30);
+  await chrome.alarms.create(CLIPBOARD_ALARM, { delayInMinutes: delay / 60 });
+  return { ok: true, seconds: delay };
+}
+
+async function clearClipboard() {
+  try {
+    const existing = await chrome.runtime.getContexts({
+      contextTypes: ['OFFSCREEN_DOCUMENT'],
+    });
+    if (existing.length === 0) {
+      await chrome.offscreen.createDocument({
+        url: OFFSCREEN_PATH,
+        reasons: ['CLIPBOARD'],
+        justification: 'Clear a copied password from the clipboard.',
+      });
+    }
+    await chrome.runtime.sendMessage({ type: 'clipboard:clear' });
+  } catch {
+    // Offscreen unavailable; the clipboard keeps its contents.
+  } finally {
+    try {
+      await chrome.offscreen.closeDocument();
+    } catch {
+      // Already gone.
+    }
+  }
+}
+
+// ---------------------------------------------------------------------- badge
+
+async function refreshBadgeForActiveTab() {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    await refreshBadge(tab);
+  } catch {
+    // No window focused yet.
+  }
+}
+
+async function refreshBadge(tab) {
+  const tabId = tab?.id;
+  if (typeof tabId !== 'number') return;
+
+  const setBadge = async (text, color) => {
+    try {
+      await chrome.action.setBadgeText({ tabId, text });
+      if (text) await chrome.action.setBadgeBackgroundColor({ tabId, color });
+    } catch {
+      // Tab closed mid-flight.
+    }
+  };
+
+  if (await isLocked()) return setBadge('', '#000000');
+  if (!tab.url || !/^https?:/.test(tab.url)) return setBadge('', '#000000');
+
+  const { items } = await matchesFor(tab.url);
+  await setBadge(items.length ? String(items.length) : '', '#2f6f4f');
+}
+
+// ------------------------------------------------------------------ messaging
+
+function broadcast(message) {
+  chrome.runtime.sendMessage(message).catch(() => {});
+}
+
+// Content scripts are hostile-adjacent: they run in pages we do not control, so
+// they get a strict allowlist and never see the vault.
+const CONTENT_ALLOWED = new Set([
+  MSG.MATCHES,
+  MSG.CREDENTIAL,
+  MSG.CAPTURE_OFFER,
+  MSG.CAPTURE_SAVE,
+  MSG.CAPTURE_NEVER,
+  MSG.CAPTURE_DISCARD,
+  MSG.OPEN_POPUP,
+  'capture:username',
+  'gen:password',
+]);
+
+// sender.tab is set for our own pages too when they are open in a tab (the
+// onboarding and options pages both are), so trust is decided by the sender's
+// origin: only chrome-extension://<our id> counts as the trusted side.
+function isExtensionPage(sender) {
+  if (sender.id !== chrome.runtime.id) return false;
+  const own = `chrome-extension://${chrome.runtime.id}`;
+  if (sender.origin) return sender.origin === own;
+  return String(sender.url || '').startsWith(own + '/');
+}
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (!isExtensionPage(sender)) {
+    if (sender.id !== chrome.runtime.id) {
+      sendResponse({ error: 'Not allowed.' });
+      return false;
+    }
+    if (!CONTENT_ALLOWED.has(message?.type)) {
+      sendResponse({ error: 'Not allowed from a web page.' });
+      return false;
+    }
+  }
+
+  handleMessage(message, sender)
+    .then((result) => sendResponse(result ?? { ok: true }))
+    .catch((error) => sendResponse({ error: error.message, code: error.code || '' }));
+  return true; // async
+});
+
+async function handleMessage(message, sender) {
+  const { type } = message || {};
+  const frameUrl = sender.url || sender.tab?.url || '';
+
+  switch (type) {
+    case MSG.STATUS: {
+      const blob = await getBlob();
+      const locked = await isLocked();
+      // The pending password stays in the worker; the popup only needs to know
+      // that something is waiting and who it belongs to.
+      const pending = locked ? null : await session.get(KEYS.PENDING_CAPTURE, null);
+      return {
+        initialized: Boolean(blob),
+        locked,
+        pendingCapture: pending ? { username: pending.username || '', url: pending.url } : null,
+      };
+    }
+
+    case MSG.CREATE:
+      return createVault(message.password);
+
+    case MSG.UNLOCK:
+      return unlockVault(message.password);
+
+    case MSG.LOCK:
+      await lock();
+      return { ok: true };
+
+    case MSG.TOUCH:
+      await touch();
+      return { ok: true };
+
+    case MSG.GET: {
+      await touch();
+      const vault = await requireVault();
+      return { vault };
+    }
+
+    case MSG.SAVE: {
+      await touch();
+      await persist(model.migrate(message.vault));
+      await refreshBadgeForActiveTab();
+      broadcast({ type: 'state:changed' });
+      return { ok: true };
+    }
+
+    case MSG.CHANGE_PASSWORD:
+      return changeMasterPassword(message.currentPassword, message.nextPassword);
+
+    case MSG.EXPORT: {
+      await requireVault();
+      return { blob: await getBlob() };
+    }
+
+    case MSG.IMPORT_BLOB:
+      return importBlob(message.blob, message.password);
+
+    case MSG.WIPE:
+      return wipeEverything();
+
+    case MSG.MATCHES:
+      return matchesFor(message.url || frameUrl);
+
+    case MSG.CREDENTIAL: {
+      await touch();
+      return credentialFor(message.itemId, frameUrl || message.url);
+    }
+
+    case MSG.FILL_FROM_POPUP:
+      return fillFromPopup(message.itemId, message.tabId);
+
+    case MSG.TOTP_CODE: {
+      await touch();
+      const vault = await requireVault();
+      const item = model.getItem(vault, message.itemId);
+      if (!item || !item.totp) throw new Error('No authenticator secret on that item.');
+      return { code: await generateTotp({ secret: item.totp }) };
+    }
+
+    case MSG.CAPTURE_OFFER:
+      return offerCapture(message, sender.tab);
+
+    case 'capture:username':
+      return rememberUsername(sender.tab?.id, message.username);
+
+    case MSG.CAPTURE_SAVE:
+      return saveCapture(message);
+
+    case MSG.CAPTURE_NEVER:
+      return neverForDomain(message.url || frameUrl);
+
+    case MSG.CAPTURE_DISCARD:
+      await session.remove(KEYS.PENDING_CAPTURE);
+      return { ok: true };
+
+    case MSG.CAPTURE_PENDING:
+      return { pending: await session.get(KEYS.PENDING_CAPTURE, null) };
+
+    case MSG.OPEN_POPUP:
+      await openPopup();
+      return { ok: true };
+
+    case MSG.SETTINGS_SET: {
+      const vault = await requireVault();
+      await persist({ ...vault, settings: { ...vault.settings, ...message.settings } });
+      await touch();
+      broadcast({ type: 'state:changed' });
+      return { ok: true };
+    }
+
+    case 'clipboard:scheduleClear':
+      return scheduleClipboardClear(message.seconds);
+
+    case 'gen:password':
+      return {
+        password: message.mode === 'passphrase'
+          ? generatePassphrase(message.options)
+          : generatePassword(message.options),
+      };
+
+    default:
+      throw new Error('Unknown request: ' + type);
+  }
+}
+
+async function openPopup() {
+  try {
+    await chrome.action.openPopup();
+  } catch {
+    await chrome.windows.create({
+      url: chrome.runtime.getURL('src/popup/popup.html?standalone=1'),
+      type: 'popup',
+      width: 400,
+      height: 620,
+    });
+  }
+}
+
+// Fill triggered from the popup: the popup knows the tab, the content script does
+// the DOM work.
+async function fillFromPopup(itemId, tabId) {
+  const tab = tabId
+    ? await chrome.tabs.get(tabId)
+    : (await chrome.tabs.query({ active: true, lastFocusedWindow: true }))[0];
+  if (!tab) throw new Error('No active tab.');
+
+  const credential = await credentialFor(itemId, tab.url);
+  await chrome.tabs.sendMessage(tab.id, { type: 'fill:apply', credential }).catch(() => {
+    throw new Error('This page cannot be filled. Reload it and try again.');
+  });
+  return { ok: true };
+}
+
+// ------------------------------------------------------------------- lifecycle
+
+chrome.runtime.onInstalled.addListener(async (details) => {
+  await ensureSessionAccessLevel();
+  buildContextMenus();
+  if (details.reason === 'install' && !(await local.get(KEYS.BLOB, null))) {
+    chrome.tabs.create({ url: chrome.runtime.getURL('src/onboarding/onboarding.html') });
+  }
+});
+
+chrome.runtime.onStartup.addListener(async () => {
+  await ensureSessionAccessLevel();
+  buildContextMenus();
+});
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === AUTOLOCK_ALARM) checkAutoLock();
+  if (alarm.name === CLIPBOARD_ALARM) clearClipboard();
+});
+
+chrome.tabs.onActivated.addListener(async ({ tabId }) => {
+  try {
+    refreshBadge(await chrome.tabs.get(tabId));
+  } catch {
+    // Tab vanished.
+  }
+});
+
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (changeInfo.status === 'complete' || changeInfo.url) refreshBadge(tab);
+});
+
+chrome.commands.onCommand.addListener(async (command) => {
+  if (command === 'lock') return lock();
+  if (command !== 'fill') return;
+  const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  if (!tab) return;
+  chrome.tabs.sendMessage(tab.id, { type: MSG.TRIGGER }).catch(() => {});
+});
+
+function buildContextMenus() {
+  chrome.contextMenus.removeAll(() => {
+    chrome.contextMenus.create({
+      id: 'keyring:fill',
+      title: 'Fill login',
+      contexts: ['editable', 'page'],
+      documentUrlPatterns: ['http://*/*', 'https://*/*'],
+    });
+    chrome.contextMenus.create({
+      id: 'keyring:generate',
+      title: 'Generate password into this field',
+      contexts: ['editable'],
+      documentUrlPatterns: ['http://*/*', 'https://*/*'],
+    });
+    chrome.contextMenus.create({ id: 'keyring:sep', type: 'separator', contexts: ['all'] });
+    chrome.contextMenus.create({ id: 'keyring:lock', title: 'Lock Keyring', contexts: ['all'] });
+  });
+}
+
+chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+  if (info.menuItemId === 'keyring:lock') return lock();
+  if (!tab?.id) return;
+  if (info.menuItemId === 'keyring:fill') {
+    chrome.tabs.sendMessage(tab.id, { type: MSG.TRIGGER }, { frameId: info.frameId }).catch(() => {});
+  }
+  if (info.menuItemId === 'keyring:generate') {
+    chrome.tabs
+      .sendMessage(tab.id, { type: 'fill:generate' }, { frameId: info.frameId })
+      .catch(() => {});
+  }
+});
+
+// Kick the access level on every cold start of the worker.
+ensureSessionAccessLevel();

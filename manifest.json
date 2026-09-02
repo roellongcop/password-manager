@@ -1,0 +1,71 @@
+{
+  "manifest_version": 3,
+  "name": "Keyring",
+  "version": "1.0.0",
+  "description": "Local-only password manager. Encrypted vault, autofill, generator, TOTP. No account, no server, no sync.",
+  "minimum_chrome_version": "116",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "permissions": [
+    "storage",
+    "alarms",
+    "contextMenus",
+    "offscreen"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "src/background/service_worker.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "src/popup/popup.html",
+    "default_title": "Keyring",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png"
+    }
+  },
+  "options_page": "src/options/options.html",
+  "content_scripts": [
+    {
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
+      "js": [
+        "src/content/util.js",
+        "src/content/detect.js",
+        "src/content/autofill.js",
+        "src/content/inline-menu.js",
+        "src/content/save-prompt.js",
+        "src/content/main.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": true,
+      "match_about_blank": false
+    }
+  ],
+  "commands": {
+    "_execute_action": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+Space"
+      },
+      "description": "Open Keyring"
+    },
+    "fill": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+L"
+      },
+      "description": "Fill login on this page"
+    },
+    "lock": {
+      "description": "Lock the vault"
+    }
+  }
+}
