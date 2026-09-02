@@ -12,6 +12,7 @@ import * as matcher from '../lib/matcher.js';
 import { MSG } from '../lib/messages.js';
 import { generatePassword, generatePassphrase } from '../lib/generator.js';
 import { generateTotp } from '../lib/totp.js';
+import { decodeImageData } from '../lib/qr.js';
 
 const AUTOLOCK_ALARM = 'keyring:autolock';
 const CLIPBOARD_ALARM = 'keyring:clipboard';
@@ -332,6 +333,33 @@ async function neverForDomain(url) {
   return { ok: true, domain };
 }
 
+// ------------------------------------------------------------------ qr codes
+
+// Grab whatever the active tab is showing and look for a QR code in it. The
+// screenshot is decoded here in the worker and never reaches a web page.
+async function scanVisibleTab() {
+  const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  if (!tab || !/^https?:/.test(tab.url || '')) {
+    throw new Error('Open the page showing the QR code first.');
+  }
+
+  let dataUrl;
+  try {
+    dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' });
+  } catch {
+    throw new Error('This page cannot be captured. Save the QR code as an image and import it instead.');
+  }
+
+  const bitmap = await createImageBitmap(await (await fetch(dataUrl)).blob());
+  const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  context.drawImage(bitmap, 0, 0);
+  const imageData = context.getImageData(0, 0, bitmap.width, bitmap.height);
+  bitmap.close();
+
+  return { text: decodeImageData(imageData), url: tab.url };
+}
+
 // ------------------------------------------------------------------ clipboard
 
 // chrome.alarms will not fire sooner than 30 seconds, so anything shorter is
@@ -523,6 +551,9 @@ async function handleMessage(message, sender) {
       if (!item || !item.totp) throw new Error('No authenticator secret on that item.');
       return { code: await generateTotp(model.totpConfig(item)) };
     }
+
+    case MSG.SCAN_TAB:
+      return scanVisibleTab();
 
     case MSG.CAPTURE_OFFER:
       return offerCapture(message, sender.tab);

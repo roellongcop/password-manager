@@ -145,6 +145,12 @@ user has saved a login for. Those sites are chosen entirely by the user and are 
 known in advance, so no narrower set of match patterns is possible. On a page the
 content script reads only login form fields in order to fill or capture them, and
 no page content is transmitted anywhere — the extension makes no network requests.
+
+This permission also covers tabs.captureVisibleTab, which is used for one thing:
+when the user presses "Scan QR on this page" to add a two-factor code. The
+screenshot is decoded inside the extension, only the otpauth:// link found in it is
+kept, and the image is never stored or sent anywhere. Nothing is captured unless
+the user presses that button.
 ```
 
 **Remote code:** No, the extension does not use remote code. All JavaScript is

@@ -21,6 +21,7 @@ export const MSG = Object.freeze({
   TRIGGER: 'fill:trigger',
 
   TOTP_CODE: 'totp:code',
+  SCAN_TAB: 'qr:scanTab',
 
   CAPTURE_OFFER: 'capture:offer',
   CAPTURE_PROMPT: 'capture:prompt',

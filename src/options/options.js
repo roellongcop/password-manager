@@ -36,6 +36,7 @@ import {
   secondsRemaining,
   parseAuthenticatorExport,
 } from '../lib/totp.js';
+import { decodeImageData } from '../lib/qr.js';
 import {
   analyze,
   rowsToItems,
@@ -1271,16 +1272,81 @@ function authenticatorImportSection() {
     render();
   }
 
-  return el('div', { class: 'section' }, [
+  // A QR image, from a file or the clipboard, is turned into the otpauth link it
+  // encodes and appended to the box above, so it goes through the same preview
+  // and import path as a pasted link.
+  async function readQrImage(source, label) {
+    try {
+      const bitmap = await createImageBitmap(source);
+      const canvas = document.createElement('canvas');
+      canvas.width = bitmap.width;
+      canvas.height = bitmap.height;
+      const context = canvas.getContext('2d', { willReadFrequently: true });
+      context.drawImage(bitmap, 0, 0);
+      const imageData = context.getImageData(0, 0, bitmap.width, bitmap.height);
+      bitmap.close();
+
+      const text = decodeImageData(imageData);
+      if (!/^otpauth:/i.test(text)) {
+        throw new Error('That QR code holds something else, not an authenticator link.');
+      }
+      paste.value = (paste.value.trim() + '\n' + text).trim();
+      read();
+      flashMessage(notice, `Read a code from ${label}.`, 'ok');
+    } catch (error) {
+      flashMessage(notice, error.message, 'error', 8000);
+    }
+  }
+
+  const imageInput = el('input', {
+    type: 'file',
+    accept: 'image/*',
+    onchange: async (event) => {
+      const file = event.target.files[0];
+      if (file) await readQrImage(file, file.name);
+      event.target.value = '';
+    },
+  });
+
+  const section = el('div', { class: 'section' }, [
     el('h2', { text: 'Import authenticator codes' }),
     el('p', {
       text: 'Paste otpauth:// links, one per line, or the JSON an authenticator extension exports. Each one becomes an entry under Authenticator.',
     }),
     el('div', { class: 'field', style: 'margin-top:10px' }, [paste]),
-    el('button', { text: 'Read pasted codes', onclick: read }),
+    el('div', { class: 'row' }, [
+      el('button', { text: 'Read pasted codes', onclick: read }),
+      el('span', { class: 'grow' }),
+    ]),
+    el('p', {
+      class: 'small muted',
+      style: 'margin:14px 0 6px',
+      text: 'Or read a QR code from a saved image, or paste one from the clipboard anywhere on this page. For a QR on a live page, use Scan QR on this page in the popup.',
+    }),
+    el('div', { class: 'field' }, [imageInput]),
     status,
     preview,
   ]);
+
+  // Ctrl+V with a screenshot in the clipboard, anywhere on the page.
+  const onPaste = (event) => {
+    if (!section.isConnected) {
+      document.removeEventListener('paste', onPaste);
+      return;
+    }
+    const item = [...(event.clipboardData?.items || [])].find((entry) =>
+      entry.type.startsWith('image/'),
+    );
+    if (!item) return;
+    const file = item.getAsFile();
+    if (file) {
+      event.preventDefault();
+      readQrImage(file, 'the clipboard');
+    }
+  };
+  document.addEventListener('paste', onPaste);
+
+  return section;
 }
 
 async function exportEncrypted() {

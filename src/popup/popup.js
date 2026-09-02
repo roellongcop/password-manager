@@ -11,9 +11,17 @@ import {
   tintFor,
   flashMessage,
 } from '../ui/common.js';
-import { searchItems, sortItems, publicSummary, hasTotp, totpConfig } from '../lib/vault.js';
+import {
+  searchItems,
+  sortItems,
+  publicSummary,
+  hasTotp,
+  totpConfig,
+  newItem,
+  upsertItem,
+} from '../lib/vault.js';
 import { rankMatches, registrableDomain } from '../lib/matcher.js';
-import { generateTotp, secondsRemaining } from '../lib/totp.js';
+import { generateTotp, secondsRemaining, parseTotpInput } from '../lib/totp.js';
 import {
   generatePassword,
   generatePassphrase,
@@ -407,9 +415,60 @@ async function fillIntoPage(itemId) {
 
 // Every code in the vault on one screen: standalone entries and the codes attached
 // to logins, ticking together off a single timer.
+// Capture the page behind the popup and pull an otpauth link out of any QR code
+// on it. The screenshot is taken and decoded in the service worker.
+async function scanForCode(button) {
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = 'Scanning…';
+  try {
+    const { text } = await send(MSG.SCAN_TAB);
+    const parsed = parseTotpInput(text);
+    if (!parsed || !parsed.secret) throw new Error('That QR code is not an authenticator code.');
+
+    const item = newItem('totp', {
+      name: parsed.issuer || parsed.account || 'Authenticator code',
+      username: parsed.account || '',
+      totp: parsed.secret,
+      totpAlgorithm: parsed.algorithm,
+      totpDigits: parsed.digits,
+      totpPeriod: parsed.period,
+    });
+
+    const already = state.vault.items.some(
+      (entry) => (entry.totp || '').toUpperCase() === item.totp.toUpperCase(),
+    );
+    if (already) {
+      flashMessage(qs('#notice'), 'That code is already saved.', 'ok');
+      return;
+    }
+
+    await send(MSG.SAVE, { vault: upsertItem(state.vault, item) });
+    await loadVault();
+    setView('codes');
+    flashMessage(qs('#notice'), `Added ${item.name}.`, 'ok');
+  } catch (error) {
+    flashMessage(qs('#notice'), error.message, 'error', 8000);
+  } finally {
+    button.disabled = false;
+    button.textContent = original;
+  }
+}
+
 function renderCodes() {
   const container = qs('#codes');
   container.textContent = '';
+
+  container.append(
+    el('div', { class: 'row', style: 'margin-bottom:10px' }, [
+      el('button', {
+        class: 'primary grow',
+        text: 'Scan QR on this page',
+        onclick: (event) => scanForCode(event.currentTarget),
+      }),
+      el('button', { text: 'Add', title: 'Add a code by hand', onclick: () => openOptions('newcode') }),
+    ]),
+  );
 
   const withCodes = searchItems(
     state.vault.items.filter((item) => hasTotp(item)),
@@ -428,7 +487,7 @@ function renderCodes() {
           ? null
           : el('button', {
               class: 'primary',
-              text: 'Add or import codes',
+              text: 'Add or import codes by hand',
               onclick: () => openOptions('newcode'),
             }),
       ]),

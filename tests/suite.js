@@ -8,6 +8,8 @@ import * as matcher from '../src/lib/matcher.js';
 import * as csv from '../src/lib/csv.js';
 import * as totp from '../src/lib/totp.js';
 import * as generator from '../src/lib/generator.js';
+import * as qr from '../src/lib/qr.js';
+import { QR_FIXTURES, fixtureMatrix } from './qr-fixtures.js';
 
 const tests = [];
 
@@ -487,6 +489,132 @@ test('passphrases use the whole wordlist', () => {
   equal(phrase.split('-').length, 4, 'word count');
   assert(generator.WORD_COUNT > 2000, `wordlist too small: ${generator.WORD_COUNT}`);
   assert(generator.passphraseEntropyBits({ words: 5 }) >= 55, 'five words should clear 55 bits');
+});
+
+// ----------------------------------------------------------------- qr codes
+
+// Paint a module matrix into an ImageData-shaped object so the whole image
+// pipeline can be exercised, optionally rotated, offset, or low contrast.
+function renderQr(rows, options = {}) {
+  const { scale = 5, pad = 40, turns = 0, dark = 0, light = 255, width, height } = options;
+  const modules = rows.length;
+  const drawn = modules * scale;
+  const imageWidth = width || drawn + pad * 2;
+  const imageHeight = height || drawn + pad * 2;
+
+  const data = new Uint8ClampedArray(imageWidth * imageHeight * 4).fill(light);
+  for (let i = 3; i < data.length; i += 4) data[i] = 255;
+
+  for (let my = 0; my < modules; my++) {
+    for (let mx = 0; mx < modules; mx++) {
+      let rx = mx;
+      let ry = my;
+      for (let turn = 0; turn < turns; turn++) {
+        const nx = modules - 1 - ry;
+        ry = rx;
+        rx = nx;
+      }
+      const value = rows[my][mx] === '1' ? dark : light;
+      for (let py = 0; py < scale; py++) {
+        for (let px = 0; px < scale; px++) {
+          const x = pad + rx * scale + px;
+          const y = pad + ry * scale + py;
+          if (x >= imageWidth || y >= imageHeight) continue;
+          const offset = (y * imageWidth + x) * 4;
+          data[offset] = value;
+          data[offset + 1] = value;
+          data[offset + 2] = value;
+        }
+      }
+    }
+  }
+  return { data, width: imageWidth, height: imageHeight };
+}
+
+test('the block tables agree with the codeword count for every version', () => {
+  // Re-derive the codeword count from the geometry rather than trusting the
+  // constant, then check all 40 block rows add up to it. A single mistyped digit
+  // in those tables would decode as silent corruption, so this is the guard.
+  for (let version = 1; version <= qr.MAX_VERSION; version++) {
+    const dimension = version * 4 + 17;
+    const centres = qr.alignmentCount(version);
+    const alignmentModules = centres ? 25 * (centres * centres - 3) - 10 * (centres - 2) : 0;
+    const functionModules =
+      192 + // three finders with their separators
+      31 + // format information and the dark module
+      (version >= 7 ? 36 : 0) + // version information
+      2 * (dimension - 16) + // the two timing patterns
+      alignmentModules;
+    const derived = Math.floor((dimension * dimension - functionModules) / 8);
+    equal(qr.totalCodewords(version), derived, `version ${version} codeword count`);
+
+    for (const level of ['L', 'M', 'Q', 'H']) {
+      const total = qr.blockLayout(version, level).reduce(
+        (sum, block) => sum + block.data + block.ec,
+        0,
+      );
+      equal(total, derived, `version ${version} level ${level} blocks`);
+    }
+  }
+});
+
+test('real QR symbols decode from their module grids', () => {
+  for (const fixture of QR_FIXTURES) {
+    const { matrix, dimension } = fixtureMatrix(fixture.matrix);
+    equal(qr.decodeMatrix(matrix, dimension), fixture.expected, fixture.name);
+  }
+});
+
+test('real QR symbols decode from an image', () => {
+  for (const fixture of QR_FIXTURES) {
+    for (const scale of [3, 5, 9]) {
+      const image = renderQr(fixture.matrix, { scale });
+      equal(qr.decodeImageData(image), fixture.expected, `${fixture.name} at ${scale}px`);
+    }
+  }
+});
+
+test('a QR code decodes whichever way up it is', () => {
+  const fixture = QR_FIXTURES[2];
+  for (const turns of [0, 1, 2, 3]) {
+    const image = renderQr(fixture.matrix, { scale: 5, turns });
+    equal(qr.decodeImageData(image), fixture.expected, `rotated ${turns * 90} degrees`);
+  }
+});
+
+test('a QR code is found off-centre in a large image', () => {
+  const fixture = QR_FIXTURES[1];
+  const image = renderQr(fixture.matrix, { scale: 6, pad: 300, width: 900, height: 700 });
+  equal(qr.decodeImageData(image), fixture.expected, 'found in the corner of a page');
+});
+
+test('a low-contrast screenshot still decodes', () => {
+  const fixture = QR_FIXTURES[0];
+  const image = renderQr(fixture.matrix, { scale: 6, dark: 60, light: 235 });
+  equal(qr.decodeImageData(image), fixture.expected, 'grey on off-white');
+});
+
+test('an image with no QR code says so rather than returning nonsense', () => {
+  const blank = renderQr(['0'], { scale: 1, pad: 60 });
+  let message = '';
+  try {
+    qr.decodeImageData(blank);
+  } catch (error) {
+    message = error.message;
+  }
+  assert(message.includes('No QR code'), `expected a clear message, got "${message}"`);
+});
+
+test('a symbol larger than the supported range is reported, not misread', () => {
+  const dimension = 21 + 4 * 12; // version 13
+  const matrix = new Uint8Array(dimension * dimension);
+  let message = '';
+  try {
+    qr.decodeMatrix(matrix, dimension);
+  } catch (error) {
+    message = error.message;
+  }
+  assert(message.includes('version 13'), `expected the version in the message, got "${message}"`);
 });
 
 export async function runSuite() {

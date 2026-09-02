@@ -44,6 +44,20 @@ SHA-1/256/512, 6-8 digits and any period are supported; the defaults are what
 almost every site uses. Paste an `otpauth://` link into the secret field and the
 algorithm, digits, period, issuer and account are all read from it.
 
+Three ways to add a code:
+
+- **Scan QR on this page** in the popup Codes tab. Keyring screenshots the tab,
+  finds the QR code in it and reads the link out. The screenshot is decoded in the
+  extension and never reaches the page.
+- **A saved image**, or a screenshot pasted with Ctrl+V, in
+  Manage -> Import & export.
+- **By hand**, pasting the secret or the otpauth:// link.
+
+QR decoding is written from scratch in [src/lib/qr.js](src/lib/qr.js) rather than
+pulled from a library, so nothing third-party ships inside the vault. It handles
+versions 1 to 10 at any rotation, which covers every authenticator QR; anything
+larger is reported rather than guessed at.
+
 To move codes over from another authenticator, use
 **Manage → Import & export → Import authenticator codes** and paste either
 `otpauth://` links one per line, or the JSON an authenticator extension exports.
@@ -119,13 +133,13 @@ recovery, by design.
 
 ```
 manifest.json            MV3 manifest
-src/lib/                 crypto, vault model, matcher, generator, TOTP, CSV
+src/lib/                 crypto, vault model, matcher, generator, TOTP, QR, CSV
 src/background/          service worker (holds the key, answers every request)
 src/content/             form detection, autofill, inline menu, save prompt
 src/popup/               the toolbar popup
 src/options/             full manager: items, settings, import/export, backups
 src/onboarding/          first-run master password setup
-tests/                   library test suite and login-form fixtures
+tests/                   library test suite, QR fixtures, login-form fixtures
 tools/make-icons.js      regenerates the PNG icons
 tools/serve.js           static server for the test pages
 tools/package.js         builds the Chrome Web Store upload
