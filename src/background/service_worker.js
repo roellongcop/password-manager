@@ -356,7 +356,7 @@ async function resolveScanTab(preferredTabId) {
 }
 
 async function toastOnTab(tabId, text) {
-  chrome.tabs.sendMessage(tabId, { type: 'ui:toast', text }).catch(() => {});
+  chrome.tabs.sendMessage(tabId, { type: 'ui:toast', text }, { frameId: 0 }).catch(() => {});
 }
 
 async function scanTabRegion(preferredTabId) {
@@ -364,11 +364,19 @@ async function scanTabRegion(preferredTabId) {
 
   let region = null;
   try {
-    region = await chrome.tabs.sendMessage(tab.id, { type: 'qr:selectRegion' });
+    // frameId 0 is the main frame. Without it the message goes to every frame in
+    // the tab and the first reply wins -- which is an iframe saying "not me",
+    // arriving long before the top frame has finished waiting for the drag.
+    region = await chrome.tabs.sendMessage(
+      tab.id,
+      { type: 'qr:selectRegion' },
+      { frameId: 0 },
+    );
   } catch {
     throw new Error('Reload the page and try again — Keyring is not running on it yet.');
   }
   if (!region || region.cancelled) return { cancelled: true };
+  if (!region.rect) throw new Error('The selection did not come back. Try the scan again.');
 
   let dataUrl;
   try {
