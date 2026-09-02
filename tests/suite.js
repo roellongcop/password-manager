@@ -825,8 +825,8 @@ test('sync decides which way each case goes', () => {
   equal(sync.decideSync({ revision: 3, dirty: false }, remote(3)), 'none', 'nothing to do');
   equal(sync.decideSync({ revision: 3, dirty: true }, remote(3)), 'push', 'local edits go up');
   equal(sync.decideSync({ revision: 3, dirty: false }, remote(5)), 'pull', 'their edits come down');
-  // The case that matters: both sides moved, so neither is thrown away silently.
-  equal(sync.decideSync({ revision: 3, dirty: true }, remote(5)), 'conflict', 'both sides moved');
+  // Both sides moved: the server wins, and the unsent edits here are lost.
+  equal(sync.decideSync({ revision: 3, dirty: true }, remote(5)), 'pull', 'the server wins');
   equal(sync.decideSync({ revision: 5, dirty: false }, remote(3)), 'push', 'a lost push is retried');
 
   equal(sync.nextRevision(null), 1, 'first upload is revision 1');

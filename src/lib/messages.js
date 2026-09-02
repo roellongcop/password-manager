@@ -37,7 +37,6 @@ export const MSG = Object.freeze({
   SYNC_SIGNUP: 'sync:signUp',
   SYNC_SIGNOUT: 'sync:signOut',
   SYNC_NOW: 'sync:now',
-  SYNC_RESOLVE: 'sync:resolve',
   SYNC_ADOPT: 'sync:adopt',
 
   OPEN_POPUP: 'ui:openPopup',

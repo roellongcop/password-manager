@@ -54,6 +54,7 @@ function intro() {
     }),
     el('ul', { class: 'small muted', style: 'margin-top:8px' }, [
       el('li', { text: 'Both computers use one master password, because the file is sealed with it. On the second computer, open the vault once with "Open the synced vault" below.' }),
+      el('li', { text: 'The copy on the server wins. If this computer has edits that never uploaded and the other one has published since, those edits are replaced.' }),
       el('li', { text: 'Sync only runs while the vault is unlocked.' }),
       el('li', { text: 'Turning sync off leaves the vault on this computer exactly as it is.' }),
     ]),
@@ -88,7 +89,7 @@ function statusSection(status, notice, refresh) {
           none: 'Already up to date.',
           conflict: 'Both copies changed. Choose which one to keep.',
         };
-        flashMessage(notice, said[result.action] || 'Sync finished.', result.action === 'conflict' ? 'warn' : 'ok');
+        flashMessage(notice, said[result.action] || 'Sync finished.', 'ok');
       } catch (error) {
         flashMessage(notice, error.message, 'error', 0);
       }
@@ -118,43 +119,6 @@ function infoRow(label, value) {
   return el('div', { class: 'history-row' }, [
     el('span', { class: 'muted', text: label }),
     el('span', { text: value }),
-  ]);
-}
-
-// ------------------------------------------------------------------ conflict
-
-// Two computers edited apart. Keyring will not guess which one wins, because the
-// wrong guess silently destroys whatever the other one wrote.
-function conflictSection(status, notice, refresh) {
-  if (!status.conflict) return null;
-  const { conflict } = status;
-
-  const choose = async (choice) => {
-    try {
-      const result = await send(MSG.SYNC_RESOLVE, { choice });
-      // Taking the server copy reloads this page, so that message is left for
-      // the reload to show rather than flashed into a page about to vanish.
-      if (result.action !== 'pull') {
-        flashMessage(notice, 'This computer’s copy is now the one on the server.', 'ok');
-      }
-    } catch (error) {
-      flashMessage(notice, error.message, 'error', 0);
-    }
-    await refresh();
-  };
-
-  return el('div', { class: 'section' }, [
-    el('div', { class: 'danger-zone' }, [
-      el('h2', { text: 'Both copies changed' }),
-      el('p', {
-        class: 'small',
-        text: `This computer has edits that were never uploaded, and ${conflict.remoteDevice || 'another computer'} uploaded version #${conflict.remoteRevision} ${conflict.remoteUpdatedAt ? relativeDate(conflict.remoteUpdatedAt) : 'since'}. Keeping one copy discards the other side's changes, so download a backup first if you are unsure.`,
-      }),
-      el('div', { class: 'row', style: 'margin-top:12px' }, [
-        el('button', { text: 'Keep this computer', onclick: () => choose('local') }),
-        el('button', { text: 'Take the server copy', onclick: () => choose('remote') }),
-      ]),
-    ]),
   ]);
 }
 

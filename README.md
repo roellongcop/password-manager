@@ -110,9 +110,12 @@ download is what puts both machines on one file; after it, syncing is automatic.
 
 Edits upload a few seconds after they are made. A check for what the other machine
 published runs when the popup or the manager is opened, and every five minutes
-besides; **Sync now** on the Sync page forces one. If both machines edited
-while apart, Keyring stops and asks which copy to keep rather than guessing and
-discarding the other one.
+besides; **Sync now** on the Sync page forces one.
+
+The copy on the server wins. If this machine has edits that never uploaded and the
+other one has published since, those edits are replaced and the manager says so.
+One rule, no prompt — and the cost of it is that unsent changes can be lost, so
+take a backup before working offline on two machines at once.
 
 ## Import and export
 

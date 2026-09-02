@@ -42,7 +42,6 @@ const EMPTY_STATE = Object.freeze({
   dirty: false,
   lastSyncedAt: '',
   lastError: '',
-  conflict: null,
 });
 
 async function getState() {
@@ -123,7 +122,7 @@ export async function signIn(email, password, { register = false } = {}) {
 
 export async function signOut() {
   await local.remove(KEYS.SYNC_SESSION);
-  await setState({ conflict: null, lastError: '' });
+  await setState({ lastError: '' });
   await chrome.alarms.clear(SYNC_ALARM);
   return { ok: true };
 }
@@ -179,15 +178,15 @@ export async function onAlarm() {
 
 // One at a time. Two overlapping runs would race on the revision counter and
 // could push a stale blob over a fresh one.
-export function syncNow(options = {}) {
+export function syncNow() {
   if (running) return running;
-  running = runSync(options).finally(() => {
+  running = runSync().finally(() => {
     running = null;
   });
   return running;
 }
 
-async function runSync({ resolve = '' } = {}) {
+async function runSync() {
   const { config, session } = await activeSession();
   if (!(await hooks.isUnlocked())) {
     throw new Error('Unlock the vault before syncing.');
@@ -196,25 +195,10 @@ async function runSync({ resolve = '' } = {}) {
   try {
     const state = await getState();
     const remote = await sync.fetchRemote(config, session);
-    let action =
-      resolve === 'local' ? 'push' : resolve === 'remote' ? 'pull' : sync.decideSync(state, remote);
-    // "Take the server copy" when the server has nothing is just a first upload.
-    if (action === 'pull' && !remote) action = 'push';
-
-    if (action === 'conflict') {
-      const conflict = {
-        remoteRevision: remote.revision,
-        remoteUpdatedAt: remote.updatedAt,
-        remoteDevice: remote.device,
-        localRevision: state.revision,
-      };
-      await setState({ conflict, lastError: '' });
-      hooks.broadcast({ type: 'sync:changed' });
-      return { action: 'conflict', conflict };
-    }
+    const action = sync.decideSync(state, remote);
 
     if (action === 'none') {
-      await setState({ conflict: null, lastError: '', lastSyncedAt: new Date().toISOString() });
+      await setState({ lastError: '', lastSyncedAt: new Date().toISOString() });
       hooks.broadcast({ type: 'sync:changed' });
       return { action: 'none' };
     }
@@ -222,18 +206,18 @@ async function runSync({ resolve = '' } = {}) {
     if (action === 'pull') {
       // Refuses if the blob does not open with the key already in memory, so a
       // vault sealed under a different master password can never land silently.
+      const replacedUnsent = state.dirty;
       await hooks.applyRemoteBlob(remote.blob);
       await setState({
         revision: remote.revision,
         dirty: false,
-        conflict: null,
         lastError: '',
         lastSyncedAt: new Date().toISOString(),
       });
       // Distinct from state:changed: the whole vault was replaced, so any page
       // showing it has to start over rather than merge what it had.
-      hooks.broadcast({ type: 'sync:pulled' });
-      return { action: 'pull', revision: remote.revision };
+      hooks.broadcast({ type: 'sync:pulled', replacedUnsent });
+      return { action: 'pull', revision: remote.revision, replacedUnsent };
     }
 
     const blob = await hooks.readBlob();
@@ -248,7 +232,6 @@ async function runSync({ resolve = '' } = {}) {
     await setState({
       revision,
       dirty: false,
-      conflict: null,
       lastError: '',
       lastSyncedAt: new Date().toISOString(),
     });
@@ -277,20 +260,11 @@ export async function adoptRemote(password) {
   await setState({
     revision: remote.revision,
     dirty: false,
-    conflict: null,
     lastError: '',
     lastSyncedAt: new Date().toISOString(),
   });
   hooks.broadcast({ type: 'sync:pulled' });
   return { ok: true, revision: remote.revision };
-}
-
-// Settling a conflict is just a sync with the direction chosen by the user.
-export async function resolveConflict(choice) {
-  if (choice !== 'local' && choice !== 'remote') {
-    throw new Error('Choose which copy to keep.');
-  }
-  return syncNow({ resolve: choice });
 }
 
 // Called right after an unlock: pick up whatever another machine has published.

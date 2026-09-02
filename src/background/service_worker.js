@@ -712,9 +712,6 @@ async function handleMessage(message, sender) {
     case MSG.SYNC_NOW:
       return syncManager.syncNow();
 
-    case MSG.SYNC_RESOLVE:
-      return syncManager.resolveConflict(message.choice);
-
     case MSG.SYNC_ADOPT:
       return syncManager.adoptRemote(message.password);
 

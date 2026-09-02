@@ -207,15 +207,16 @@ export async function pushRemote(config, session, entry, fetchImpl = fetch) {
 // Which way the next sync should go.
 //
 // `revision` is the revision this machine last agreed with the server on, and
-// `dirty` says whether the vault has changed since. Comparing those to the
-// server's revision is what catches two machines editing the same vault apart:
-// rather than let the later write win and lose the other side, that comes back
-// as a conflict for the user to settle.
+// `dirty` says whether the vault has changed since.
+//
+// When the server has moved on, its copy wins -- including over edits here that
+// never made it up. That is one simple rule instead of a prompt, and the cost of
+// it is that unsent changes on this machine are discarded.
 export function decideSync(local, remote) {
   // Nothing on the server yet: this device seeds it.
   if (!remote) return 'push';
   if (remote.revision === local.revision) return local.dirty ? 'push' : 'none';
-  if (remote.revision > local.revision) return local.dirty ? 'conflict' : 'pull';
+  if (remote.revision > local.revision) return 'pull';
   // The server is behind us, which means our last push did not land.
   return 'push';
 }
