@@ -347,3 +347,20 @@ body {
 .code-row[data-for-site='1'] {
   background: var(--accent-soft);
 }
+
+.code-row .copied {
+  display: none;
+  flex: none;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--accent);
+}
+
+.code-row[data-copied='1'] .code,
+.code-row[data-copied='1'] .ring-wrap {
+  display: none;
+}
+
+.code-row[data-copied='1'] .copied {
+  display: inline;
+}

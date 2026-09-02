@@ -448,13 +448,10 @@ function renderEditor() {
   body.append(customFieldsEditor(draft));
 
   // Monospace, because notes are where multi-line config and keys end up.
-  // Masked like a password until revealed; -webkit-text-security hides the glyphs
-  // without touching the value, so it stays editable while hidden.
-  let notesRevealed = false;
   const notes = el('textarea', {
     class: 'mono',
     // overflow-wrap, or a long key sits on one line and scrolls sideways.
-    style: 'overflow-wrap:anywhere; -webkit-text-security:disc',
+    style: 'overflow-wrap:anywhere',
     value: draft.notes || '',
     oninput: (event) => {
       draft.notes = event.target.value;
@@ -466,15 +463,6 @@ function renderEditor() {
       el('div', { class: 'row' }, [
         el('label', { text: 'Notes', style: 'margin:0' }),
         el('span', { class: 'grow' }),
-        el('button', {
-          class: 'icon',
-          text: 'Show',
-          onclick: (event) => {
-            notesRevealed = !notesRevealed;
-            notes.style.setProperty('-webkit-text-security', notesRevealed ? 'none' : 'disc');
-            event.currentTarget.textContent = notesRevealed ? 'Hide' : 'Show';
-          },
-        }),
         el('button', {
           class: 'icon',
           text: 'Copy',
@@ -937,6 +925,13 @@ async function removeItem(id) {
 async function copyValue(value, button) {
   try {
     await copyWithAutoClear(value, state.vault.settings.clipboardClearSeconds);
+    // Never swap textContent on a button built from child elements: it would
+    // delete them.
+    if (button.firstElementChild) {
+      button.dataset.copied = '1';
+      setTimeout(() => delete button.dataset.copied, 1200);
+      return;
+    }
     const original = button.textContent;
     button.textContent = 'Copied';
     setTimeout(() => {

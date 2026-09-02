@@ -310,40 +310,24 @@ function fieldBlock(label, value, secret, options = {}) {
   return wrapper;
 }
 
-// Notes are masked like a password until revealed. Line breaks are kept while
-// masked so the shape of the content still reads.
 function notesBlock(notes) {
-  const masked = () => notes.replace(/[^\n]/g, '•');
-  let revealed = false;
-
-  // pre-wrap keeps the line breaks; anywhere breaks a long unbroken token such as
-  // a key or a base64 blob, which would otherwise run off the side.
-  const body = el('div', {
-    class: 'card small mono',
-    style: 'white-space:pre-wrap; overflow-wrap:anywhere; margin-top:5px',
-    text: masked(),
-  });
-
   return el('div', { class: 'field' }, [
     el('div', { class: 'row' }, [
       el('label', { text: 'Notes', style: 'margin:0' }),
       el('span', { class: 'grow' }),
       el('button', {
         class: 'icon',
-        text: 'Show',
-        onclick: (event) => {
-          revealed = !revealed;
-          body.textContent = revealed ? notes : masked();
-          event.currentTarget.textContent = revealed ? 'Hide' : 'Show';
-        },
-      }),
-      el('button', {
-        class: 'icon',
         text: 'Copy',
         onclick: (event) => copyValue(notes, event.currentTarget),
       }),
     ]),
-    body,
+    // pre-wrap keeps the line breaks; anywhere breaks a long unbroken token such
+    // as a key or a base64 blob, which would otherwise run off the side.
+    el('div', {
+      class: 'card small mono',
+      style: 'white-space:pre-wrap; overflow-wrap:anywhere; margin-top:5px',
+      text: notes,
+    }),
   ]);
 }
 
@@ -392,6 +376,14 @@ function stopTotpTimer() {
 async function copyValue(value, button) {
   try {
     await copyWithAutoClear(value, state.vault.settings.clipboardClearSeconds);
+    // Swapping textContent is only safe on a button whose whole content is that
+    // one label. On a button built from child elements it would delete them all,
+    // so those get a data attribute and let CSS do the talking.
+    if (button.firstElementChild) {
+      button.dataset.copied = '1';
+      setTimeout(() => delete button.dataset.copied, 1200);
+      return;
+    }
     const original = button.textContent;
     button.textContent = 'Copied';
     setTimeout(() => {
@@ -507,7 +499,7 @@ function renderCodes() {
   for (const item of ordered) {
     const config = totpConfig(item);
     const code = el('span', { class: 'code mono', text: '······' });
-    const ring = el('span');
+    const ring = el('span', { class: 'ring-wrap' });
     ring.innerHTML =
       '<svg class="ring" viewBox="0 0 26 26"><circle class="track" cx="13" cy="13" r="11"/>' +
       '<circle class="value" cx="13" cy="13" r="11" stroke-dasharray="69.1" stroke-dashoffset="0"/></svg>';
@@ -531,6 +523,7 @@ function renderCodes() {
         ]),
         code,
         ring,
+        el('span', { class: 'copied', text: 'Copied' }),
       ],
     );
 
