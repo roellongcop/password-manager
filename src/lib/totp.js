@@ -131,3 +131,88 @@ export function buildOtpAuthUri({ secret, issuer, account, algorithm, digits, pe
 export function asciiSecret(text) {
   return encoder.encode(text);
 }
+
+// Bulk import from another authenticator. Accepts, in one paste:
+//   - otpauth:// URIs, one per line
+//   - a JSON array of entries, which is what most authenticator extensions export
+//     ({ secret, issuer, account | name | label, algorithm, digits, period })
+// Anything unreadable is reported rather than dropped silently.
+export function parseAuthenticatorExport(text) {
+  const raw = String(text || '').trim();
+  if (!raw) return { entries: [], problems: [] };
+
+  const entries = [];
+  const problems = [];
+
+  if (raw.startsWith('[') || raw.startsWith('{')) {
+    let parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return { entries: [], problems: ['That looks like JSON but it could not be parsed.'] };
+    }
+    const list = Array.isArray(parsed) ? parsed : parsed.accounts || parsed.data || [parsed];
+    list.forEach((entry, index) => {
+      const secret = entry.secret || entry.key || '';
+      if (!secret) {
+        problems.push(`Entry ${index + 1} has no secret.`);
+        return;
+      }
+      // Some exports put "Issuer:account" in a single label field.
+      const label = entry.account || entry.name || entry.label || entry.user || '';
+      const [labelIssuer, labelAccount] = String(label).includes(':')
+        ? String(label).split(/:(.+)/)
+        : ['', String(label)];
+      try {
+        base32Decode(secret);
+      } catch (error) {
+        problems.push(`Entry ${index + 1} (${label || 'unnamed'}): ${error.message}`);
+        return;
+      }
+      entries.push({
+        secret: String(secret).replace(/[\s-]/g, ''),
+        issuer: entry.issuer || labelIssuer || '',
+        account: labelAccount || '',
+        algorithm: hmacName(entry.algorithm || 'SHA-1'),
+        digits: Number(entry.digits) || 6,
+        period: Number(entry.period) || 30,
+      });
+    });
+    return { entries, problems };
+  }
+
+  const lines = raw.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  lines.forEach((line, index) => {
+    if (/^otpauth-migration:/i.test(line)) {
+      problems.push(
+        `Line ${index + 1}: otpauth-migration:// links are not supported. Export as individual otpauth:// links instead.`,
+      );
+      return;
+    }
+    // Only links here. A bare secret is accepted in the item editor, but in a bulk
+    // paste it cannot be told apart from a stray word -- plenty of English words
+    // are valid base32 -- and a silently imported line of junk is worse than an
+    // error.
+    if (!/^otpauth:\/\//i.test(line)) {
+      problems.push(`Line ${index + 1}: not an otpauth:// link.`);
+      return;
+    }
+    try {
+      const parsed = parseTotpInput(line);
+      if (!parsed) return;
+      base32Decode(parsed.secret);
+      entries.push({
+        secret: parsed.secret,
+        issuer: parsed.issuer || '',
+        account: parsed.account || '',
+        algorithm: parsed.algorithm || 'SHA-1',
+        digits: parsed.digits || 6,
+        period: parsed.period || 30,
+      });
+    } catch (error) {
+      problems.push(`Line ${index + 1}: ${error.message}`);
+    }
+  });
+
+  return { entries, problems };
+}

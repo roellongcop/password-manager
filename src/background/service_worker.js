@@ -197,12 +197,14 @@ async function credentialFor(itemId, frameUrl) {
   let totpCode = '';
   if (item.totp) {
     try {
-      totpCode = await generateTotp({ secret: item.totp });
+      totpCode = await generateTotp(model.totpConfig(item));
     } catch {
       totpCode = '';
     }
   }
-  return { username: item.username, password: item.password, totp: totpCode };
+  // A standalone code entry has no username or password; the content script fills
+  // only the fields it gets a value for.
+  return { username: item.username || '', password: item.password || '', totp: totpCode };
 }
 
 // ------------------------------------------------------------------- capture
@@ -268,7 +270,9 @@ function decideCapture(vault, payload, url) {
   const username = (payload.username || '').trim();
   if (!password) return { action: 'none' };
 
-  const candidates = matcher.rankMatches(vault.items, url);
+  const candidates = matcher
+    .rankMatches(vault.items, url)
+    .filter((item) => item.type === 'login');
   const sameUser = candidates.find(
     (item) => (item.username || '').toLowerCase() === username.toLowerCase(),
   );
@@ -517,7 +521,7 @@ async function handleMessage(message, sender) {
       const vault = await requireVault();
       const item = model.getItem(vault, message.itemId);
       if (!item || !item.totp) throw new Error('No authenticator secret on that item.');
-      return { code: await generateTotp({ secret: item.totp }) };
+      return { code: await generateTotp(model.totpConfig(item)) };
     }
 
     case MSG.CAPTURE_OFFER:

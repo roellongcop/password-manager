@@ -11,7 +11,7 @@ import {
   tintFor,
   flashMessage,
 } from '../ui/common.js';
-import { searchItems, sortItems, publicSummary } from '../lib/vault.js';
+import { searchItems, sortItems, publicSummary, hasTotp, totpConfig } from '../lib/vault.js';
 import { rankMatches, registrableDomain } from '../lib/matcher.js';
 import { generateTotp, secondsRemaining } from '../lib/totp.js';
 import {
@@ -25,7 +25,7 @@ const state = {
   vault: null,
   tab: null,
   query: '',
-  view: 'vault', // vault | detail | generator
+  view: 'vault', // vault | detail | codes | generator
   selectedId: '',
   pending: null,
   totpTimer: 0,
@@ -82,14 +82,19 @@ function setView(view) {
   state.view = view;
   qs('#list').classList.toggle('hidden', view !== 'vault');
   qs('#detail').classList.toggle('hidden', view !== 'detail');
+  qs('#codes').classList.toggle('hidden', view !== 'codes');
   qs('#generator').classList.toggle('hidden', view !== 'generator');
+
+  // The detail view belongs to the Vault tab, so that tab stays lit while an item
+  // is open.
+  const activeTab = view === 'detail' ? 'vault' : view;
   for (const tab of qsa('.tab')) {
-    const active = (tab.dataset.tab === 'generator' && view === 'generator') ||
-      (tab.dataset.tab === 'vault' && view !== 'generator');
-    tab.dataset.active = active ? '1' : '0';
+    tab.dataset.active = tab.dataset.tab === activeTab ? '1' : '0';
   }
+
   stopTotpTimer();
   if (view === 'vault') renderList();
+  if (view === 'codes') renderCodes();
   if (view === 'generator') renderGenerator();
   renderPending();
 }
@@ -159,6 +164,7 @@ function entryRow(item, matchesSite) {
 
 function labelForType(item) {
   if (item.type === 'note') return 'Secure note';
+  if (item.type === 'totp') return 'Authenticator code';
   if (item.type === 'card') return item.number ? maskCard(item.number) : 'Payment card';
   return 'No username';
 }
@@ -219,6 +225,24 @@ function renderDetail() {
     if (item.username) container.append(fieldBlock('Username', item.username, false));
     if (item.password) container.append(fieldBlock('Password', item.password, true));
     if (item.totp) container.append(totpBlock(item));
+    for (const uri of item.uris || []) {
+      container.append(fieldBlock('Website', uri.uri, false, { link: true }));
+    }
+  }
+
+  if (item.type === 'totp') {
+    const canFill = state.tab && rankMatches([item], state.tab.url || '').length > 0;
+    container.append(
+      el('button', {
+        class: 'primary wide',
+        text: canFill ? 'Fill the code on this page' : 'Not linked to this page',
+        disabled: !canFill,
+        style: 'margin-bottom:12px',
+        onclick: () => fillIntoPage(item.id),
+      }),
+    );
+    if (item.username) container.append(fieldBlock('Account', item.username, false));
+    container.append(totpBlock(item));
     for (const uri of item.uris || []) {
       container.append(fieldBlock('Website', uri.uri, false, { link: true }));
     }
@@ -338,10 +362,11 @@ function totpBlock(item) {
 
   const tick = async () => {
     try {
-      code.textContent = await generateTotp({ secret: item.totp });
-      const left = secondsRemaining(30);
+      const config = totpConfig(item);
+      code.textContent = await generateTotp(config);
+      const left = secondsRemaining(config.period);
       const circle = ring.querySelector('.value');
-      circle.style.strokeDashoffset = String((69.1 * (30 - left)) / 30);
+      circle.style.strokeDashoffset = String((69.1 * (config.period - left)) / config.period);
     } catch {
       code.textContent = 'invalid';
     }
@@ -376,6 +401,108 @@ async function fillIntoPage(itemId) {
   } catch (error) {
     flashMessage(qs('#notice'), error.message, 'error');
   }
+}
+
+// --------------------------------------------------------------- authenticator
+
+// Every code in the vault on one screen: standalone entries and the codes attached
+// to logins, ticking together off a single timer.
+function renderCodes() {
+  const container = qs('#codes');
+  container.textContent = '';
+
+  const withCodes = searchItems(
+    state.vault.items.filter((item) => hasTotp(item)),
+    state.query,
+  );
+
+  if (!withCodes.length) {
+    container.append(
+      el('div', { class: 'empty' }, [
+        el('p', {
+          text: state.query
+            ? 'No codes match that search.'
+            : 'No authenticator codes yet.',
+        }),
+        state.query
+          ? null
+          : el('button', {
+              class: 'primary',
+              text: 'Add or import codes',
+              onclick: () => openOptions('newcode'),
+            }),
+      ]),
+    );
+    return;
+  }
+
+  // Codes for the site you are on come first.
+  const pageUrl = state.tab?.url || '';
+  const forSite = new Set(rankMatches(withCodes, pageUrl).map((item) => item.id));
+  const ordered = [
+    ...sortItems(withCodes.filter((item) => forSite.has(item.id))),
+    ...sortItems(withCodes.filter((item) => !forSite.has(item.id))),
+  ];
+
+  const rows = [];
+  for (const item of ordered) {
+    const config = totpConfig(item);
+    const code = el('span', { class: 'code mono', text: '······' });
+    const ring = el('span');
+    ring.innerHTML =
+      '<svg class="ring" viewBox="0 0 26 26"><circle class="track" cx="13" cy="13" r="11"/>' +
+      '<circle class="value" cx="13" cy="13" r="11" stroke-dasharray="69.1" stroke-dashoffset="0"/></svg>';
+
+    const row = el(
+      'button',
+      {
+        class: 'entry code-row',
+        title: 'Copy this code',
+        onclick: (event) => copyValue(code.textContent.replace(/\s/g, ''), event.currentTarget),
+      },
+      [
+        el('span', {
+          class: 'avatar',
+          text: domainIconLetter(item),
+          style: `background:${tintFor(item.name || item.username || '?')}`,
+        }),
+        el('span', { class: 'lines' }, [
+          el('span', { class: 'name', text: item.name || 'Untitled' }),
+          el('span', { class: 'sub', text: item.username || labelForType(item) }),
+        ]),
+        code,
+        ring,
+      ],
+    );
+
+    if (forSite.has(item.id)) row.dataset.forSite = '1';
+    rows.push({ item, config, code, ring });
+    container.append(row);
+  }
+
+  // One timer for the whole list rather than one per row.
+  const tick = async () => {
+    for (const row of rows) {
+      try {
+        const value = await generateTotp(row.config);
+        // Grouped in threes, the way authenticator apps show it.
+        row.code.textContent =
+          value.length === 6 ? `${value.slice(0, 3)} ${value.slice(3)}` : value;
+        const left = secondsRemaining(row.config.period);
+        const circle = row.ring.querySelector('.value');
+        if (circle) {
+          circle.style.strokeDashoffset = String(
+            (69.1 * (row.config.period - left)) / row.config.period,
+          );
+          circle.style.stroke = left <= 5 ? 'var(--danger)' : 'var(--accent)';
+        }
+      } catch {
+        row.code.textContent = 'invalid';
+      }
+    }
+  };
+  tick();
+  state.totpTimer = setInterval(tick, 1000);
 }
 
 // ----------------------------------------------------------------- generator
@@ -600,7 +727,8 @@ function wireStaticHandlers() {
 
   qs('#search').addEventListener('input', (event) => {
     state.query = event.target.value;
-    if (state.view !== 'vault') setView('vault');
+    if (state.view === 'codes') renderCodes();
+    else if (state.view !== 'vault') setView('vault');
     else renderList();
   });
 
@@ -611,6 +739,7 @@ function wireStaticHandlers() {
 
   qs('#add').addEventListener('click', () => openOptions('new'));
   qs('#tab-vault').addEventListener('click', () => setView('vault'));
+  qs('#tab-codes').addEventListener('click', () => setView('codes'));
   qs('#tab-generator').addEventListener('click', () => setView('generator'));
   qs('#tab-settings').addEventListener('click', () => openOptions());
 

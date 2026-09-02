@@ -336,3 +336,14 @@ body {
   font-weight: 600;
   box-shadow: var(--shadow);
 }
+
+.code-row .code {
+  flex: none;
+  font-size: 17px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+}
+
+.code-row[data-for-site='1'] {
+  background: var(--accent-soft);
+}

@@ -120,8 +120,12 @@ export function uriMatches(entry, pageUrl) {
   return sameRegistrableDomain(savedRaw, page.href);
 }
 
+// Logins and standalone authenticator entries can both be attached to a site;
+// notes and cards are never filled, so they never match.
+const FILLABLE_TYPES = new Set(['login', 'totp']);
+
 export function itemMatches(item, pageUrl) {
-  if (!item || item.type !== 'login') return false;
+  if (!item || !FILLABLE_TYPES.has(item.type)) return false;
   return (item.uris || []).some((entry) => uriMatches(entry, pageUrl));
 }
 

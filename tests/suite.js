@@ -66,7 +66,10 @@ test('every seal uses a fresh IV', async () => {
 
 test('a damaged ciphertext fails closed', async () => {
   const { blob, rawKey } = await vaultCrypto.create(model.emptyVault(), 'pw');
-  const flipped = { ...blob, ct: 'A' + blob.ct.slice(1) };
+  // Swap the first base64 character for a different one -- hardcoding 'A' left a
+  // 1-in-64 chance of "damaging" the blob into exactly itself.
+  const first = blob.ct[0] === 'A' ? 'B' : 'A';
+  const flipped = { ...blob, ct: first + blob.ct.slice(1) };
   let threw = false;
   try {
     await vaultCrypto.open(flipped, rawKey);
@@ -320,6 +323,112 @@ test('otpauth links and bare secrets both parse', () => {
   equal(parsed.secret, 'JBSWY3DPEHPK3PXP', 'secret');
   equal(parsed.issuer, 'GitHub', 'issuer');
   equal(totp.parseTotpInput('jbsw y3dp ehpk 3pxp').secret, 'jbswy3dpehpk3pxp', 'spaces stripped');
+});
+
+test('a standalone code entry carries its own settings', () => {
+  const item = model.newItem('totp', {
+    name: 'Work VPN',
+    username: 'ada',
+    totp: 'JBSWY3DPEHPK3PXP',
+    totpAlgorithm: 'SHA-256',
+    totpDigits: 8,
+    totpPeriod: 60,
+  });
+  equal(model.totpConfig(item), {
+    secret: 'JBSWY3DPEHPK3PXP',
+    algorithm: 'SHA-256',
+    digits: 8,
+    period: 60,
+  }, 'config read back');
+  equal(model.isDefaultTotpConfig(item), false, 'recognised as non-default');
+  equal(model.hasTotp(item), true, 'has a code');
+
+  const plain = model.newItem('totp', { totp: 'JBSWY3DPEHPK3PXP' });
+  equal(model.isDefaultTotpConfig(plain), true, 'defaults recognised');
+  equal(model.totpConfig(plain).digits, 6, 'default digits');
+});
+
+test('a non-default code survives CSV export and re-import', () => {
+  const original = model.newItem('totp', {
+    name: 'Work VPN',
+    username: 'ada@example.com',
+    totp: 'JBSWY3DPEHPK3PXP',
+    totpAlgorithm: 'SHA-256',
+    totpDigits: 8,
+    totpPeriod: 60,
+  });
+
+  const text = csv.itemsToCsv([original]);
+  assert(text.includes('otpauth://'), 'non-default settings go out as a full link');
+
+  const analysis = csv.analyze(text);
+  const { items } = csv.rowsToItems(analysis.dataRows, analysis.mapping);
+  equal(items[0].type, 'totp', 'still a code entry');
+  equal(items[0].totp, 'JBSWY3DPEHPK3PXP', 'secret');
+  equal(items[0].totpAlgorithm, 'SHA-256', 'algorithm');
+  equal(items[0].totpDigits, 8, 'digits');
+  equal(items[0].totpPeriod, 60, 'period');
+  equal(items[0].username, 'ada@example.com', 'account');
+});
+
+test('a default code still exports as a bare secret', () => {
+  const item = model.newItem('login', { name: 'GitHub', totp: 'JBSWY3DPEHPK3PXP' });
+  const text = csv.itemsToCsv([item]);
+  assert(!text.includes('otpauth://'), 'no need for a link when nothing is custom');
+  const analysis = csv.analyze(text);
+  const { items } = csv.rowsToItems(analysis.dataRows, analysis.mapping);
+  equal(items[0].totp, 'JBSWY3DPEHPK3PXP', 'secret round-trips');
+});
+
+test('a paste of otpauth links imports as codes', () => {
+  const text = [
+    'otpauth://totp/GitHub:ada@example.com?secret=JBSWY3DPEHPK3PXP&issuer=GitHub',
+    'otpauth://totp/Work?secret=GEZDGNBVGY3TQOJQ&algorithm=SHA256&digits=8&period=60',
+    'not a link at all',
+  ].join('\n');
+  const { entries, problems } = totp.parseAuthenticatorExport(text);
+  equal(entries.length, 2, 'two codes read');
+  equal(entries[0].issuer, 'GitHub', 'issuer');
+  equal(entries[0].account, 'ada@example.com', 'account');
+  equal(entries[1].algorithm, 'SHA-256', 'algorithm normalised');
+  equal(entries[1].digits, 8, 'digits');
+  equal(entries[1].period, 60, 'period');
+  equal(problems.length, 1, 'the junk line is reported, not silently dropped');
+});
+
+test('a JSON export from another authenticator imports too', () => {
+  const text = JSON.stringify([
+    { secret: 'JBSWY3DPEHPK3PXP', issuer: 'GitHub', account: 'ada' },
+    { secret: 'GEZDGNBVGY3TQOJQ', name: 'Bank:ada@example.com' },
+    { issuer: 'Broken', account: 'no secret here' },
+  ]);
+  const { entries, problems } = totp.parseAuthenticatorExport(text);
+  equal(entries.length, 2, 'two usable entries');
+  equal(entries[1].issuer, 'Bank', 'issuer split out of a combined label');
+  equal(entries[1].account, 'ada@example.com', 'account split out');
+  equal(problems.length, 1, 'the entry with no secret is reported');
+});
+
+test('migration links are refused with an explanation, not ignored', () => {
+  const { entries, problems } = totp.parseAuthenticatorExport(
+    'otpauth-migration://offline?data=AAAA',
+  );
+  equal(entries.length, 0, 'nothing imported');
+  assert(problems[0].includes('otpauth-migration'), 'says why');
+});
+
+test('standalone code entries can match a site, notes and cards cannot', () => {
+  const code = model.newItem('totp', {
+    name: 'GitHub',
+    uris: [{ uri: 'github.com', matchType: 'domain' }],
+  });
+  const note = model.newItem('note', {
+    name: 'GitHub',
+    uris: [{ uri: 'github.com', matchType: 'domain' }],
+  });
+  assert(matcher.itemMatches(code, 'https://github.com/login'), 'code entry matches');
+  assert(!matcher.itemMatches(note, 'https://github.com/login'), 'note never matches');
+  equal(matcher.rankMatches([code, note], 'https://github.com/login').length, 1, 'only the code');
 });
 
 test('a bad base32 secret is reported, not guessed at', () => {

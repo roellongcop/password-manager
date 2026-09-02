@@ -3,7 +3,39 @@
 
 export const SCHEMA_VERSION = 1;
 
-export const ITEM_TYPES = Object.freeze(['login', 'note', 'card']);
+// 'totp' is a standalone authenticator entry: a code with no password attached,
+// for accounts whose password lives somewhere else (or nowhere).
+export const ITEM_TYPES = Object.freeze(['login', 'note', 'card', 'totp']);
+
+export const TOTP_DEFAULTS = Object.freeze({
+  algorithm: 'SHA-1',
+  digits: 6,
+  period: 30,
+});
+
+// Both logins and standalone entries carry their code the same way, so anything
+// that shows or fills a code can take either.
+export function hasTotp(item) {
+  return Boolean(item && item.totp);
+}
+
+export function totpConfig(item) {
+  return {
+    secret: item.totp || '',
+    algorithm: item.totpAlgorithm || TOTP_DEFAULTS.algorithm,
+    digits: Number(item.totpDigits) || TOTP_DEFAULTS.digits,
+    period: Number(item.totpPeriod) || TOTP_DEFAULTS.period,
+  };
+}
+
+export function isDefaultTotpConfig(item) {
+  const config = totpConfig(item);
+  return (
+    config.algorithm === TOTP_DEFAULTS.algorithm &&
+    config.digits === TOTP_DEFAULTS.digits &&
+    config.period === TOTP_DEFAULTS.period
+  );
+}
 
 export function defaultSettings() {
   return {
@@ -62,8 +94,22 @@ export function newItem(type = 'login', fields = {}) {
       password: '',
       uris: [],
       totp: '',
+      totpAlgorithm: TOTP_DEFAULTS.algorithm,
+      totpDigits: TOTP_DEFAULTS.digits,
+      totpPeriod: TOTP_DEFAULTS.period,
       allowInsecure: false,
       passwordHistory: [],
+    });
+  } else if (type === 'totp') {
+    // name holds the issuer, username the account, so search, sorting, CSV and
+    // the item list all work on it without special cases.
+    Object.assign(base, {
+      username: '',
+      totp: '',
+      totpAlgorithm: TOTP_DEFAULTS.algorithm,
+      totpDigits: TOTP_DEFAULTS.digits,
+      totpPeriod: TOTP_DEFAULTS.period,
+      uris: [],
     });
   } else if (type === 'card') {
     Object.assign(base, {
@@ -166,6 +212,7 @@ export function publicSummary(item) {
     name: item.name || primaryUri(item) || item.username || 'Untitled',
     username: item.username || '',
     hasTotp: Boolean(item.totp),
+    onlyTotp: item.type === 'totp',
     favorite: Boolean(item.favorite),
   };
 }

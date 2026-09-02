@@ -5,9 +5,9 @@
 // matched against a set of ordinary column-name synonyms, and whatever cannot be
 // recognised is left for the user to map by hand rather than guessed at.
 
-import { newItem } from './vault.js';
+import { newItem, isDefaultTotpConfig, totpConfig } from './vault.js';
 import { registrableDomain, suggestedName } from './matcher.js';
-import { parseTotpInput } from './totp.js';
+import { parseTotpInput, buildOtpAuthUri } from './totp.js';
 
 // RFC 4180: double quotes escape themselves, quoted fields may hold commas and
 // newlines, and CRLF or LF both end a record.
@@ -185,6 +185,7 @@ function readType(value) {
   if (['login', 'password', 'credential'].includes(text)) return 'login';
   if (['note', 'secure note', 'securenote', 'text'].includes(text)) return 'note';
   if (['card', 'payment', 'credit card'].includes(text)) return 'card';
+  if (['totp', 'code', '2fa', 'authenticator', 'otp'].includes(text)) return 'totp';
   return '';
 }
 
@@ -225,16 +226,27 @@ export function rowsToItems(dataRows, mapping) {
       favorite: readBoolean(record.favorite),
     });
 
-    if (type === 'login') {
+    if (type === 'login' || type === 'totp') {
       item.username = record.username || '';
-      item.password = record.password || '';
+      if (type === 'login') item.password = record.password || '';
       if (record.url) {
         item.uris = splitUrls(record.url).map((uri) => ({ uri, matchType: 'domain' }));
       }
       if (record.totp) {
+        // The column takes a bare base32 secret or a whole otpauth:// URI; the URI
+        // form is what carries a non-default algorithm, digit count or period.
         try {
           const parsed = parseTotpInput(record.totp);
-          item.totp = parsed ? parsed.secret : '';
+          if (parsed) {
+            item.totp = parsed.secret;
+            item.totpAlgorithm = parsed.algorithm || 'SHA-1';
+            item.totpDigits = parsed.digits || 6;
+            item.totpPeriod = parsed.period || 30;
+            if (type === 'totp' && !record.name && parsed.issuer) item.name = parsed.issuer;
+            if (type === 'totp' && !record.username && parsed.account) {
+              item.username = parsed.account;
+            }
+          }
         } catch {
           skipped.push({ row: rowIndex + 1, reason: 'unreadable TOTP secret, imported without it' });
         }
@@ -297,6 +309,21 @@ function cellFor(item, column) {
       return (item.uris || []).map((entry) => entry.uri).join(' ');
     case 'favorite':
       return item.favorite ? 'true' : '';
+    case 'totp': {
+      // A bare secret reads better in a spreadsheet, but anything non-default has
+      // to go out as a full otpauth:// URI or the settings are lost.
+      if (!item.totp) return '';
+      if (isDefaultTotpConfig(item)) return item.totp;
+      const config = totpConfig(item);
+      return buildOtpAuthUri({
+        secret: config.secret,
+        issuer: item.type === 'totp' ? item.name : '',
+        account: item.username || '',
+        algorithm: config.algorithm,
+        digits: config.digits,
+        period: config.period,
+      });
+    }
     default:
       return item[column] ?? '';
   }

@@ -23,11 +23,35 @@ Pin the toolbar icon so the popup is one click away.
 | Open the vault | Click the icon, or `Ctrl+Shift+Space` |
 | Fill the login on the current page | Click the icon inside the field, or `Ctrl+Shift+L` |
 | Save a new login | Sign in as usual and answer the prompt |
+| See your 2FA codes | **Codes** tab in the popup |
 | Generate a password | Generator tab, or right-click a password field |
 | Manage everything | **Manage** in the popup, or the extension's options page |
 | Lock immediately | **Lock** in the popup, or right-click → Lock Keyring |
 
 The badge on the toolbar icon shows how many saved logins match the current site.
+
+## Authenticator
+
+Keyring is also a TOTP authenticator, so a separate 2FA extension is not needed.
+Codes come in two shapes and both appear together under **Codes** in the popup,
+ticking off one timer:
+
+- A code attached to a login, filled alongside the password.
+- A standalone entry (**Authenticator** in the sidebar, **Code** in the toolbar) for
+  an account whose password lives somewhere else.
+
+SHA-1/256/512, 6-8 digits and any period are supported; the defaults are what
+almost every site uses. Paste an `otpauth://` link into the secret field and the
+algorithm, digits, period, issuer and account are all read from it.
+
+To move codes over from another authenticator, use
+**Manage → Import & export → Import authenticator codes** and paste either
+`otpauth://` links one per line, or the JSON an authenticator extension exports.
+Duplicate secrets are skipped. `otpauth-migration://` links (the Google
+Authenticator export format) are not supported — export individual links instead.
+
+Give a standalone entry a website and its code fills the one-time-code field there,
+the same way a login does.
 
 ## Import and export
 
@@ -38,9 +62,10 @@ writes them:
 type,name,folder,favorite,username,password,url,totp,notes,cardholder,number,expMonth,expYear,cvv
 ```
 
-`type` is `login`, `note` or `card`; leave it blank and Keyring works it out from
+`type` is `login`, `note`, `card` or `totp`; leave it blank and Keyring works it out from
 what the row contains. `favorite` is `true` or empty. Only the columns you actually
-use need to be present.
+use need to be present. The `totp` column takes a bare base32 secret, or a whole
+`otpauth://` link when the code uses a non-default algorithm, digit count or period.
 
 **Manage → Import & export → Download a blank template** gives you that header plus
 one example of each item type, ready to fill in with a spreadsheet or a text editor

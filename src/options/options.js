@@ -24,10 +24,18 @@ import {
   folderNames,
   passwordStrength,
   defaultSettings,
+  totpConfig,
+  hasTotp,
+  TOTP_DEFAULTS,
 } from '../lib/vault.js';
 import { MATCH_TYPES, registrableDomain } from '../lib/matcher.js';
 import { generatePassword, generatePassphrase } from '../lib/generator.js';
-import { generateTotp, parseTotpInput, secondsRemaining } from '../lib/totp.js';
+import {
+  generateTotp,
+  parseTotpInput,
+  secondsRemaining,
+  parseAuthenticatorExport,
+} from '../lib/totp.js';
 import {
   analyze,
   rowsToItems,
@@ -89,6 +97,10 @@ function restoreFromHash() {
   // Entry points used by the onboarding page and the popup.
   if (raw === 'restore' || raw === 'welcome') {
     state.page = 'transfer';
+    return;
+  }
+  if (raw === 'newcode') {
+    state.draft = newItem('totp');
     return;
   }
 
@@ -177,6 +189,7 @@ const FILTERS = [
   { kind: 'type', value: 'login', label: 'Logins' },
   { kind: 'type', value: 'note', label: 'Secure notes' },
   { kind: 'type', value: 'card', label: 'Cards' },
+  { kind: 'type', value: 'totp', label: 'Authenticator' },
 ];
 
 const PAGES = [
@@ -308,6 +321,9 @@ function renderList() {
             el('span', { class: 'name', text: item.name || 'Untitled' }),
             el('span', { class: 'sub', text: subtitleFor(item) }),
           ]),
+          hasTotp(item) && item.type !== 'totp'
+            ? el('span', { class: 'code-badge', title: 'Has a 2FA code', text: '2FA' })
+            : null,
           item.favorite ? el('span', { class: 'star', text: '★' }) : null,
         ],
       ),
@@ -317,6 +333,7 @@ function renderList() {
 
 function subtitleFor(item) {
   if (item.type === 'note') return 'Secure note';
+  if (item.type === 'totp') return item.username || 'Authenticator code';
   if (item.type === 'card') {
     const digits = String(item.number || '').replace(/\D/g, '');
     return digits ? `•••• ${digits.slice(-4)}` : 'Payment card';
@@ -398,6 +415,18 @@ function renderEditor() {
         'Off by default: anything typed into an http page travels in the clear.',
       ),
     );
+  }
+
+  if (draft.type === 'totp') {
+    body.append(
+      textField('Account', draft, 'username', {
+        placeholder: 'you@example.com',
+        autocomplete: 'off',
+      }),
+    );
+    body.append(totpField(draft));
+    body.append(totpAdvanced(draft));
+    body.append(uriEditor(draft, 'Websites (so the code can be filled there)'));
   }
 
   if (draft.type === 'card') {
@@ -614,7 +643,18 @@ function totpField(draft) {
       try {
         const parsed = raw ? parseTotpInput(raw) : null;
         draft.totp = parsed ? parsed.secret : '';
-        if (parsed && raw.startsWith('otpauth://')) event.target.value = parsed.secret;
+        if (parsed && raw.toLowerCase().startsWith('otpauth://')) {
+          // A pasted link carries the algorithm, digits and period, and often the
+          // issuer and account too. Take all of it, then show the bare secret.
+          draft.totpAlgorithm = parsed.algorithm || TOTP_DEFAULTS.algorithm;
+          draft.totpDigits = parsed.digits || TOTP_DEFAULTS.digits;
+          draft.totpPeriod = parsed.period || TOTP_DEFAULTS.period;
+          if (!draft.name && parsed.issuer) draft.name = parsed.issuer;
+          if (!draft.username && parsed.account) draft.username = parsed.account;
+          event.target.value = parsed.secret;
+          renderEditor();
+          return;
+        }
       } catch {
         draft.totp = raw;
       }
@@ -628,8 +668,9 @@ function totpField(draft) {
       return;
     }
     try {
-      const code = await generateTotp({ secret: draft.totp });
-      preview.textContent = `Current code ${code} · ${secondsRemaining(30)}s left`;
+      const config = totpConfig(draft);
+      const code = await generateTotp(config);
+      preview.textContent = `Current code ${code} · ${secondsRemaining(config.period)}s left`;
     } catch {
       preview.textContent = 'That secret is not valid base32.';
     }
@@ -645,7 +686,85 @@ function totpField(draft) {
   ]);
 }
 
-function uriEditor(draft) {
+// Algorithm, digits and period. Almost every site uses the defaults, so this stays
+// folded away until someone needs it.
+function totpAdvanced(draft) {
+  const details = el('details', { class: 'field' });
+  details.append(
+    el('summary', {
+      class: 'small muted',
+      style: 'cursor:pointer; margin-bottom:8px',
+      text: 'Advanced code settings',
+    }),
+  );
+
+  const nonDefault =
+    (draft.totpAlgorithm && draft.totpAlgorithm !== TOTP_DEFAULTS.algorithm) ||
+    (draft.totpDigits && Number(draft.totpDigits) !== TOTP_DEFAULTS.digits) ||
+    (draft.totpPeriod && Number(draft.totpPeriod) !== TOTP_DEFAULTS.period);
+  if (nonDefault) details.open = true;
+
+  details.append(
+    el('div', { class: 'row' }, [
+      el('div', { class: 'grow' }, [
+        el('label', { text: 'Algorithm' }),
+        el(
+          'select',
+          {
+            onchange: (event) => {
+              draft.totpAlgorithm = event.target.value;
+            },
+          },
+          ['SHA-1', 'SHA-256', 'SHA-512'].map((value) =>
+            el('option', {
+              value,
+              text: value,
+              selected: value === (draft.totpAlgorithm || TOTP_DEFAULTS.algorithm) ? true : null,
+            }),
+          ),
+        ),
+      ]),
+      el('div', { class: 'grow' }, [
+        el('label', { text: 'Digits' }),
+        el(
+          'select',
+          {
+            onchange: (event) => {
+              draft.totpDigits = Number(event.target.value);
+            },
+          },
+          ['6', '7', '8'].map((value) =>
+            el('option', {
+              value,
+              text: value,
+              selected: Number(value) === Number(draft.totpDigits || TOTP_DEFAULTS.digits) ? true : null,
+            }),
+          ),
+        ),
+      ]),
+      el('div', { class: 'grow' }, [
+        el('label', { text: 'Period (seconds)' }),
+        el('input', {
+          type: 'number',
+          min: '10',
+          max: '120',
+          value: String(draft.totpPeriod || TOTP_DEFAULTS.period),
+          oninput: (event) => {
+            draft.totpPeriod = Number(event.target.value) || TOTP_DEFAULTS.period;
+          },
+        }),
+      ]),
+    ]),
+    el('p', {
+      class: 'small muted',
+      style: 'margin:6px 0 0',
+      text: 'Leave these alone unless the site told you otherwise. Pasting an otpauth:// link sets them for you.',
+    }),
+  );
+  return details;
+}
+
+function uriEditor(draft, label = 'Websites') {
   const list = el('div');
 
   function draw() {
@@ -692,7 +811,7 @@ function uriEditor(draft) {
   draw();
 
   return el('div', { class: 'field' }, [
-    el('label', { text: 'Websites' }),
+    el('label', { text: label }),
     list,
     el('button', {
       text: 'Add website',
@@ -1047,9 +1166,121 @@ function renderTransfer(pane) {
         el('button', { text: 'Export plain CSV', onclick: exportCsv }),
       ]),
     ]),
+    authenticatorImportSection(),
     importSection(),
     restoreSection(),
   );
+}
+
+// Bringing codes over from a separate authenticator app or extension.
+function authenticatorImportSection() {
+  const paste = el('textarea', {
+    class: 'mono',
+    style: 'overflow-wrap:anywhere',
+    placeholder:
+      'otpauth://totp/GitHub:ada@example.com?secret=JBSWY3DPEHPK3PXP&issuer=GitHub\notpauth://totp/...',
+  });
+  const status = el('p', { class: 'small muted' });
+  const preview = el('div');
+  let entries = [];
+
+  const read = () => {
+    preview.textContent = '';
+    const result = parseAuthenticatorExport(paste.value);
+    entries = result.entries;
+
+    if (!entries.length && !result.problems.length) {
+      status.textContent = 'Nothing to read yet.';
+      return;
+    }
+    status.textContent = `${entries.length} code${entries.length === 1 ? '' : 's'} found` +
+      (result.problems.length ? `, ${result.problems.length} line(s) could not be read.` : '.');
+
+    for (const problem of result.problems.slice(0, 5)) {
+      preview.append(el('p', { class: 'small', style: 'color:var(--danger)', text: problem }));
+    }
+    for (const entry of entries.slice(0, 20)) {
+      preview.append(
+        el('div', { class: 'small muted' }, [
+          // A link with no issuer puts everything in the label, so fall back to it
+          // rather than showing "Unnamed" next to a perfectly good name.
+          el('span', {
+            text:
+              entry.issuer && entry.account
+                ? `${entry.issuer} — ${entry.account}`
+                : entry.issuer || entry.account || 'Unnamed',
+          }),
+        ]),
+      );
+    }
+    if (entries.length > 20) {
+      preview.append(el('p', { class: 'small muted', text: `…and ${entries.length - 20} more.` }));
+    }
+    if (entries.length) {
+      preview.append(
+        el('button', {
+          class: 'primary',
+          style: 'margin-top:10px',
+          text: `Import ${entries.length} code${entries.length === 1 ? '' : 's'}`,
+          onclick: runImport,
+        }),
+      );
+    }
+  };
+
+  async function runImport() {
+    // Same secret already saved anywhere means the same code; skip it.
+    const existing = new Set(
+      state.vault.items.filter((item) => item.totp).map((item) => item.totp.toUpperCase()),
+    );
+
+    let vault = state.vault;
+    let added = 0;
+    let skipped = 0;
+    for (const entry of entries) {
+      if (existing.has(entry.secret.toUpperCase())) {
+        skipped += 1;
+        continue;
+      }
+      existing.add(entry.secret.toUpperCase());
+      vault = upsertItem(
+        vault,
+        newItem('totp', {
+          name: entry.issuer || entry.account || 'Authenticator code',
+          username: entry.account || '',
+          totp: entry.secret,
+          totpAlgorithm: entry.algorithm,
+          totpDigits: entry.digits,
+          totpPeriod: entry.period,
+        }),
+      );
+      added += 1;
+    }
+
+    state.vault = vault;
+    await persist();
+    flashMessage(
+      notice,
+      `Imported ${added} code${added === 1 ? '' : 's'}` +
+        (skipped ? `, skipped ${skipped} already saved.` : '.'),
+      'ok',
+      8000,
+    );
+    state.page = null;
+    state.filter = { kind: 'type', value: 'totp' };
+    render();
+  }
+
+  return el('div', { class: 'section' }, [
+    el('h2', { text: 'Import authenticator codes' }),
+    el('p', {
+      text: 'Paste otpauth:// links, one per line, or the JSON an authenticator extension exports. Each one becomes an entry under Authenticator.',
+    }),
+    el('div', { class: 'field', style: 'margin-top:10px' }, [paste]),
+    el('button', { text: 'Read pasted codes', onclick: read }),
+    status,
+    preview,
+  ]);
 }
 
 async function exportEncrypted() {
@@ -1371,6 +1602,7 @@ function wireStatic() {
   qs('#new-login').addEventListener('click', () => startNew('login'));
   qs('#new-note').addEventListener('click', () => startNew('note'));
   qs('#new-card').addEventListener('click', () => startNew('card'));
+  qs('#new-code').addEventListener('click', () => startNew('totp'));
 
   qs('#lock').addEventListener('click', async () => {
     await send(MSG.LOCK);
