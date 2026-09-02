@@ -119,7 +119,13 @@ export function parseTotpInput(input) {
 }
 
 export function buildOtpAuthUri({ secret, issuer, account, algorithm, digits, period }) {
-  const label = encodeURIComponent(`${issuer || ''}${issuer ? ':' : ''}${account || ''}`);
+  // Each half is encoded, but the separating colon is left alone: that is the
+  // shape authenticator apps expect, and an encoded %3A reads as part of the
+  // issuer name in some of them.
+  const label = [issuer, account]
+    .filter(Boolean)
+    .map((part) => encodeURIComponent(part))
+    .join(':');
   const params = new URLSearchParams({ secret });
   if (issuer) params.set('issuer', issuer);
   if (algorithm && algorithm !== 'SHA-1') params.set('algorithm', algorithm.replace('-', ''));

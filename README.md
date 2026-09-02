@@ -59,10 +59,14 @@ Three ways to add a code:
   Manage -> Import & export, where a screenshot pasted with Ctrl+V works too.
 - **By hand**, pasting the secret or the otpauth:// link.
 
-QR decoding is written from scratch in [src/lib/qr.js](src/lib/qr.js) rather than
-pulled from a library, so nothing third-party ships inside the vault. It handles
-versions 1 to 10 at any rotation, which covers every authenticator QR; anything
-larger is reported rather than guessed at.
+A saved code can go the other way too: **Show QR code** in the editor renders it as
+a scannable otpauth QR, for setting the same account up on a phone or a second
+authenticator. That QR carries the secret itself, so treat it like the secret.
+
+QR reading and writing are both written from scratch in
+[src/lib/qr.js](src/lib/qr.js) rather than pulled from a library, so nothing
+third-party ships inside the vault. Versions 1 to 10 at any rotation, which covers
+every authenticator QR; anything larger is reported rather than guessed at.
 
 To move codes over from another authenticator, use
 **Manage → Import & export → Import authenticator codes** and paste either

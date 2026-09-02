@@ -508,6 +508,341 @@ function decodeBitstream(bytes, version) {
   return out.join('');
 }
 
+// ------------------------------------------------------------- encoding
+
+// Reed-Solomon the other way round: the generator polynomial for `count` error
+// correction codewords, then long division to produce them.
+function generatorPoly(count) {
+  let poly = Uint8Array.from([1]);
+  for (let i = 0; i < count; i++) {
+    poly = polyMultiply(poly, Uint8Array.from([1, EXP[i]]));
+  }
+  return poly;
+}
+
+function errorCodewords(data, count) {
+  const generator = generatorPoly(count);
+  const remainder = new Uint8Array(data.length + count);
+  remainder.set(data, 0);
+
+  for (let i = 0; i < data.length; i++) {
+    const factor = remainder[i];
+    if (factor === 0) continue;
+    for (let j = 1; j < generator.length; j++) {
+      remainder[i + j] ^= gfMultiply(generator[j], factor);
+    }
+  }
+  return remainder.slice(data.length);
+}
+
+function dataCapacity(version, ecLevel) {
+  return blockLayout(version, ecLevel).reduce((sum, block) => sum + block.data, 0);
+}
+
+// The smallest version the payload fits in at this level.
+function chooseVersion(byteLength, ecLevel) {
+  for (let version = 1; version <= MAX_VERSION; version++) {
+    const countBits = version <= 9 ? 8 : 16;
+    const needed = Math.ceil((4 + countBits + byteLength * 8) / 8);
+    if (needed <= dataCapacity(version, ecLevel)) return version;
+  }
+  return 0;
+}
+
+function buildDataCodewords(bytes, version, ecLevel) {
+  const capacity = dataCapacity(version, ecLevel);
+  const countBits = version <= 9 ? 8 : 16;
+  const bits = [];
+  const push = (value, width) => {
+    for (let i = width - 1; i >= 0; i--) bits.push((value >> i) & 1);
+  };
+
+  push(4, 4); // byte mode
+  push(bytes.length, countBits);
+  for (const byte of bytes) push(byte, 8);
+
+  // Terminator, then out to a byte boundary.
+  const room = capacity * 8 - bits.length;
+  push(0, Math.min(4, room));
+  while (bits.length % 8 !== 0) bits.push(0);
+
+  const codewords = new Uint8Array(capacity);
+  for (let i = 0; i < bits.length; i += 8) {
+    let value = 0;
+    for (let j = 0; j < 8; j++) value = (value << 1) | bits[i + j];
+    codewords[i / 8] = value;
+  }
+  // The spec's padding, alternating, for whatever is left.
+  for (let i = bits.length / 8; i < capacity; i += 2) {
+    codewords[i] = 0xec;
+    if (i + 1 < capacity) codewords[i + 1] = 0x11;
+  }
+  return codewords;
+}
+
+// Split into blocks, add error correction, then interleave the way the reader
+// expects to find them.
+function interleave(dataCodewords, version, ecLevel) {
+  const layout = blockLayout(version, ecLevel);
+  const blocks = [];
+  let offset = 0;
+  for (const block of layout) {
+    const data = dataCodewords.slice(offset, offset + block.data);
+    offset += block.data;
+    blocks.push({ data, ec: errorCodewords(data, block.ec) });
+  }
+
+  const output = [];
+  const longestData = Math.max(...blocks.map((block) => block.data.length));
+  for (let i = 0; i < longestData; i++) {
+    for (const block of blocks) {
+      if (i < block.data.length) output.push(block.data[i]);
+    }
+  }
+  const longestEc = Math.max(...blocks.map((block) => block.ec.length));
+  for (let i = 0; i < longestEc; i++) {
+    for (const block of blocks) {
+      if (i < block.ec.length) output.push(block.ec[i]);
+    }
+  }
+  return Uint8Array.from(output);
+}
+
+// The fixed patterns: finders, separators, timing, alignment, dark module.
+function buildTemplate(version) {
+  const dimension = dimensionFor(version);
+  const matrix = new Uint8Array(dimension * dimension);
+  const set = (x, y, value) => {
+    if (x >= 0 && y >= 0 && x < dimension && y < dimension) matrix[y * dimension + x] = value;
+  };
+
+  const finder = (originX, originY) => {
+    for (let y = -1; y <= 7; y++) {
+      for (let x = -1; x <= 7; x++) {
+        const onEdge = x === 0 || x === 6 || y === 0 || y === 6;
+        const inCore = x >= 2 && x <= 4 && y >= 2 && y <= 4;
+        const inside = x >= 0 && x <= 6 && y >= 0 && y <= 6;
+        set(originX + x, originY + y, inside && (onEdge || inCore) ? 1 : 0);
+      }
+    }
+  };
+  finder(0, 0);
+  finder(dimension - 7, 0);
+  finder(0, dimension - 7);
+
+  for (let i = 8; i < dimension - 8; i++) {
+    const value = i % 2 === 0 ? 1 : 0;
+    set(i, 6, value);
+    set(6, i, value);
+  }
+
+  const centres = ALIGNMENT[version - 1] || [];
+  for (const centreY of centres) {
+    for (const centreX of centres) {
+      const onFinder =
+        (centreX === 6 && centreY === 6) ||
+        (centreX === 6 && centreY === dimension - 7) ||
+        (centreX === dimension - 7 && centreY === 6);
+      if (onFinder) continue;
+      for (let y = -2; y <= 2; y++) {
+        for (let x = -2; x <= 2; x++) {
+          const ring = Math.abs(x) === 2 || Math.abs(y) === 2;
+          set(centreX + x, centreY + y, ring || (x === 0 && y === 0) ? 1 : 0);
+        }
+      }
+    }
+  }
+
+  // The one module that is always dark.
+  set(8, dimension - 8, 1);
+  return matrix;
+}
+
+// The four penalty rules; the mask with the lowest total is the one to use.
+function maskPenalty(matrix, dimension) {
+  const at = (x, y) => matrix[y * dimension + x];
+  let penalty = 0;
+
+  // Rule 1: runs of five or more of the same colour, each way.
+  for (let line = 0; line < dimension; line++) {
+    for (const horizontal of [true, false]) {
+      let run = 1;
+      for (let i = 1; i < dimension; i++) {
+        const current = horizontal ? at(i, line) : at(line, i);
+        const previous = horizontal ? at(i - 1, line) : at(line, i - 1);
+        if (current === previous) {
+          run += 1;
+        } else {
+          if (run >= 5) penalty += run - 2;
+          run = 1;
+        }
+      }
+      if (run >= 5) penalty += run - 2;
+    }
+  }
+
+  // Rule 2: every 2x2 block of one colour.
+  for (let y = 0; y < dimension - 1; y++) {
+    for (let x = 0; x < dimension - 1; x++) {
+      const value = at(x, y);
+      if (value === at(x + 1, y) && value === at(x, y + 1) && value === at(x + 1, y + 1)) {
+        penalty += 3;
+      }
+    }
+  }
+
+  // Rule 3: the finder-like 1:1:3:1:1 sequence with four light modules beside it.
+  const patternA = [1, 0, 1, 1, 1, 0, 1, 0, 0, 0, 0];
+  const patternB = [0, 0, 0, 0, 1, 0, 1, 1, 1, 0, 1];
+  for (let y = 0; y < dimension; y++) {
+    for (let x = 0; x < dimension; x++) {
+      for (const horizontal of [true, false]) {
+        const fits = (pattern) =>
+          pattern.every((want, offset) => {
+            const px = horizontal ? x + offset : x;
+            const py = horizontal ? y : y + offset;
+            if (px >= dimension || py >= dimension) return false;
+            return at(px, py) === want;
+          });
+        if (fits(patternA) || fits(patternB)) penalty += 40;
+      }
+    }
+  }
+
+  // Rule 4: drift away from half dark.
+  let dark = 0;
+  for (const value of matrix) dark += value;
+  const percent = (dark * 100) / (dimension * dimension);
+  penalty += Math.floor(Math.abs(percent - 50) / 5) * 10;
+
+  return penalty;
+}
+
+function placeFormat(matrix, dimension, ecLevel, mask) {
+  const data = (EC_LEVELS.indexOf(ecLevel) << 3) | mask;
+  const bits = FORMAT_STRINGS.find((entry) => entry.data === data).bits;
+  const at = (x, y, value) => {
+    matrix[y * dimension + x] = value;
+  };
+  // Same walk as readFormat, most significant bit first.
+  const positions = [];
+  for (let column = 0; column <= 5; column++) positions.push([column, 8]);
+  positions.push([7, 8], [8, 8], [8, 7]);
+  for (let row = 5; row >= 0; row--) positions.push([8, row]);
+
+  const mirrored = [];
+  for (let row = dimension - 1; row >= dimension - 7; row--) mirrored.push([8, row]);
+  for (let column = dimension - 8; column < dimension; column++) mirrored.push([column, 8]);
+
+  positions.forEach(([x, y], index) => at(x, y, (bits >> (14 - index)) & 1));
+  mirrored.forEach(([x, y], index) => at(x, y, (bits >> (14 - index)) & 1));
+}
+
+function placeVersion(matrix, dimension, version) {
+  if (version < 7) return;
+  let value = version << 12;
+  for (let i = 5; i >= 0; i--) {
+    if (value & (1 << (i + 12))) value ^= 0x1f25 << i;
+  }
+  const bits = (version << 12) | (value & 0xfff);
+
+  for (let i = 0; i < 18; i++) {
+    const bit = (bits >> i) & 1;
+    const row = Math.floor(i / 3);
+    const column = i % 3;
+    matrix[(dimension - 11 + column) * dimension + row] = bit;
+    matrix[row * dimension + (dimension - 11 + column)] = bit;
+  }
+}
+
+// Encode text as a QR module matrix. With no level given it takes the most
+// error correction the payload still fits in, which is what an authenticator QR
+// wants: M normally, dropping to L only for a long link.
+export function encodeMatrix(text, requestedLevel = '') {
+  const bytes = new TextEncoder().encode(String(text));
+
+  const levels = requestedLevel ? [requestedLevel] : ['M', 'L'];
+  let ecLevel = '';
+  let version = 0;
+  for (const level of levels) {
+    const candidate = chooseVersion(bytes.length, level);
+    if (candidate) {
+      ecLevel = level;
+      version = candidate;
+      break;
+    }
+  }
+  if (!version) {
+    throw new Error(`That is too long for a version ${MAX_VERSION} QR code.`);
+  }
+
+  const dimension = dimensionFor(version);
+  const codewords = interleave(buildDataCodewords(bytes, version, ecLevel), version, ecLevel);
+  const reserved = functionMap(version);
+  const template = buildTemplate(version);
+
+  // Lay the codewords into the free modules, in the same zigzag the reader walks.
+  const placed = Uint8Array.from(template);
+  let bitIndex = 0;
+  let upward = true;
+  for (let right = dimension - 1; right >= 1; right -= 2) {
+    if (right === 6) right = 5;
+    for (let step = 0; step < dimension; step++) {
+      const y = upward ? dimension - 1 - step : step;
+      for (let column = 0; column < 2; column++) {
+        const x = right - column;
+        if (reserved[y * dimension + x]) continue;
+        const byte = codewords[bitIndex >> 3];
+        const bit = bitIndex < codewords.length * 8 ? (byte >> (7 - (bitIndex & 7))) & 1 : 0;
+        placed[y * dimension + x] = bit;
+        bitIndex += 1;
+      }
+    }
+    upward = !upward;
+  }
+
+  // Try all eight masks and keep the least penalised, as the spec requires.
+  let best = null;
+  for (let mask = 0; mask < 8; mask++) {
+    const candidate = Uint8Array.from(placed);
+    const maskFn = MASKS[mask];
+    for (let y = 0; y < dimension; y++) {
+      for (let x = 0; x < dimension; x++) {
+        if (reserved[y * dimension + x]) continue;
+        if (maskFn(y, x)) candidate[y * dimension + x] ^= 1;
+      }
+    }
+    placeFormat(candidate, dimension, ecLevel, mask);
+    placeVersion(candidate, dimension, version);
+
+    const penalty = maskPenalty(candidate, dimension);
+    if (!best || penalty < best.penalty) best = { penalty, matrix: candidate, mask };
+  }
+
+  return { matrix: best.matrix, dimension, version, ecLevel, mask: best.mask };
+}
+
+// A QR as SVG: crisp at any size, and no canvas needed to show it.
+export function encodeSvg(text, options = {}) {
+  const { ecLevel = '', quiet = 4, size = 200 } = options;
+  const { matrix, dimension } = encodeMatrix(text, ecLevel);
+  const span = dimension + quiet * 2;
+
+  let path = '';
+  for (let y = 0; y < dimension; y++) {
+    for (let x = 0; x < dimension; x++) {
+      if (matrix[y * dimension + x]) path += `M${x + quiet} ${y + quiet}h1v1h-1z`;
+    }
+  }
+
+  return (
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" ` +
+    `viewBox="0 0 ${span} ${span}" shape-rendering="crispEdges" role="img">` +
+    `<rect width="${span}" height="${span}" fill="#ffffff"/>` +
+    `<path d="${path}" fill="#000000"/></svg>`
+  );
+}
+
 // ------------------------------------------------------- image to modules
 
 const BLOCK = 8;

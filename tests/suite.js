@@ -649,6 +649,62 @@ test('a low-contrast screenshot still decodes', () => {
   equal(qr.decodeImageData(image), fixture.expected, 'grey on off-white');
 });
 
+test('an encoded QR reads back as what went in', () => {
+  // The decoder is validated against real symbols above, so round-tripping
+  // through it is a genuine check on the encoder rather than a circular one.
+  const payloads = [
+    'HELLO',
+    'otpauth://totp/Example:demo@example.com?secret=JBSWY3DPEHPK3PXP&issuer=Example',
+    'otpauth://totp/Work:ada@example.com?secret=GEZDGNBVGY3TQOJQ&issuer=Work&algorithm=SHA256&digits=8&period=45',
+  ];
+  for (const text of payloads) {
+    for (const level of ['L', 'M', 'Q', 'H']) {
+      // Only levels that can hold it; a long link at H needs a bigger symbol
+      // than this decoder handles.
+      let encoded;
+      try {
+        encoded = qr.encodeMatrix(text, level);
+      } catch {
+        continue;
+      }
+      equal(
+        qr.decodeMatrix(encoded.matrix, encoded.dimension),
+        text,
+        `${level}, version ${encoded.version}`,
+      );
+    }
+  }
+});
+
+test('an encoded QR survives being drawn and read back as an image', () => {
+  const text = 'otpauth://totp/Example:demo@example.com?secret=JBSWY3DPEHPK3PXP&issuer=Example';
+  const { matrix, dimension } = qr.encodeMatrix(text);
+  const rows = [];
+  for (let y = 0; y < dimension; y++) {
+    let row = '';
+    for (let x = 0; x < dimension; x++) row += matrix[y * dimension + x] ? '1' : '0';
+    rows.push(row);
+  }
+  equal(qr.decodeImageData(renderQr(rows, { scale: 4 })), text, 'through the image pipeline');
+});
+
+test('encoding picks the smallest symbol that fits, dropping error level only when it must', () => {
+  const short = qr.encodeMatrix('HELLO');
+  equal(short.version, 1, 'a short payload fits version 1');
+  equal(short.ecLevel, 'M', 'and keeps the higher error level');
+
+  const long = qr.encodeMatrix('x'.repeat(260));
+  equal(long.ecLevel, 'L', 'a long payload drops to L rather than failing');
+
+  let message = '';
+  try {
+    qr.encodeMatrix('x'.repeat(400));
+  } catch (error) {
+    message = error.message;
+  }
+  assert(message.includes('too long'), `expected a clear refusal, got "${message}"`);
+});
+
 test('an image with no QR code says so rather than returning nonsense', () => {
   const blank = renderQr(['0'], { scale: 1, pad: 60 });
   let message = '';

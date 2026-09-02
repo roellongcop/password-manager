@@ -37,8 +37,9 @@ import {
   parseTotpInput,
   secondsRemaining,
   parseAuthenticatorExport,
+  buildOtpAuthUri,
 } from '../lib/totp.js';
-import { decodeImageData } from '../lib/qr.js';
+import { decodeImageData, encodeSvg } from '../lib/qr.js';
 import {
   analyze,
   rowsToItems,
@@ -777,6 +778,7 @@ function totpField(draft) {
   const imageInput = el('input', {
     type: 'file',
     accept: 'image/*',
+    class: 'grow',
     onchange: async (event) => {
       const file = event.target.files[0];
       event.target.value = '';
@@ -801,6 +803,49 @@ function totpField(draft) {
     },
   });
 
+  // The reverse of reading a QR: show one, so the same account can be set up on
+  // a phone or a second authenticator.
+  const qrHolder = el('div', { style: 'display:none; margin-top:10px' });
+  let qrShown = false;
+
+  const qrButton = el('button', {
+    text: 'Show QR code',
+    onclick: (event) => {
+      qrShown = !qrShown;
+      event.currentTarget.textContent = qrShown ? 'Hide QR code' : 'Show QR code';
+      qrHolder.style.display = qrShown ? 'block' : 'none';
+      qrHolder.textContent = '';
+      if (!qrShown) return;
+
+      if (!draft.totp) {
+        qrHolder.append(el('p', { class: 'small muted', text: 'Add a secret first.' }));
+        return;
+      }
+      try {
+        const config = totpConfig(draft);
+        const uri = buildOtpAuthUri({
+          secret: config.secret,
+          issuer: draft.type === 'totp' ? draft.name : draft.name || '',
+          account: draft.username || '',
+          algorithm: config.algorithm,
+          digits: config.digits,
+          period: config.period,
+        });
+        const image = el('div', { class: 'qr-code', html: encodeSvg(uri, { size: 190 }) });
+        qrHolder.append(
+          image,
+          el('p', {
+            class: 'small',
+            style: 'color:var(--warn); margin:8px 0 0; max-width:260px',
+            text: 'This QR holds the secret itself. Anyone who scans it can generate your codes, so do not show it on a shared screen.',
+          }),
+        );
+      } catch (error) {
+        qrHolder.append(el('p', { class: 'small', style: 'color:var(--danger)', text: error.message }));
+      }
+    },
+  });
+
   return el('div', { class: 'field' }, [
     el('label', { text: 'Authenticator secret (TOTP)' }),
     input,
@@ -808,9 +853,10 @@ function totpField(draft) {
     el('p', {
       class: 'small muted',
       style: 'margin:10px 0 5px',
-      text: 'Or read it from a saved QR image:',
+      text: 'Read it from a saved QR image, or show the one for this account:',
     }),
-    imageInput,
+    el('div', { class: 'row' }, [imageInput, qrButton]),
+    qrHolder,
   ]);
 }
 
