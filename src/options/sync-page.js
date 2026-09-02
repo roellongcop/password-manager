@@ -67,7 +67,9 @@ function statusSection(status, notice, refresh) {
   if (status.signedIn) {
     rows.push(
       infoRow('Last synced', status.lastSyncedAt ? `${relativeDate(status.lastSyncedAt)} (${formatDate(status.lastSyncedAt)})` : 'never'),
-      infoRow('Version on the server', status.revision ? `#${status.revision}` : 'nothing uploaded yet'),
+      // The last revision this computer agreed with the server on -- not a live
+      // reading of the server, which would mean a fetch every time the page draws.
+      infoRow('Version here', status.revision ? `#${status.revision}` : 'never synced'),
       infoRow('Unsent changes', status.dirty ? 'yes' : 'no'),
       infoRow('This device', status.deviceName),
     );
