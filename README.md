@@ -30,6 +30,10 @@ Pin the toolbar icon so the popup is one click away.
 
 The badge on the toolbar icon shows how many saved logins match the current site.
 
+Lists are ordered favourites first, then whatever you used most recently, then the
+rest by name. Filling a login or copying a password or code counts as using it.
+Click the star beside any item to favourite it; that saves straight away.
+
 ## Authenticator
 
 Keyring is also a TOTP authenticator, so a separate 2FA extension is not needed.

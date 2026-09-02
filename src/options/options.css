@@ -237,11 +237,6 @@ body {
   text-overflow: ellipsis;
 }
 
-.star {
-  color: var(--warn);
-  flex: none;
-}
-
 .empty {
   padding: 40px 20px;
   text-align: center;
@@ -442,4 +437,25 @@ details > summary {
   letter-spacing: 0.05em;
   /* Fixed-width digits, so the number does not shift as it counts. */
   font-variant-numeric: tabular-nums;
+}
+
+/* The star toggles favourite from the list. It stays visible when off so the
+   control is findable, and brightens on hover. */
+.star {
+  flex: none;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 6px;
+  color: var(--border);
+  font-size: 15px;
+  line-height: 1;
+}
+
+.star[data-on='1'] {
+  color: var(--warn);
+}
+
+.star:hover {
+  background: var(--surface-2);
+  color: var(--warn);
 }

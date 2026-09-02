@@ -595,6 +595,15 @@ async function handleMessage(message, sender) {
       await touch();
       return { ok: true };
 
+    // Copying a password or a code counts as using the item, the same as
+    // filling it does -- otherwise the recency order only ever reflects fills.
+    case MSG.USED: {
+      const vault = await requireVault();
+      if (!model.getItem(vault, message.itemId)) return { ok: false };
+      await persist(model.touchItem(vault, message.itemId));
+      return { ok: true };
+    }
+
     case MSG.GET: {
       await touch();
       const vault = await requireVault();

@@ -14,6 +14,7 @@ export const MSG = Object.freeze({
   IMPORT_BLOB: 'vault:importBlob',
   WIPE: 'vault:wipe',
   TOUCH: 'vault:touch',
+  USED: 'vault:used',
 
   MATCHES: 'fill:matches',
   CREDENTIAL: 'fill:credential',

@@ -188,9 +188,17 @@ export function searchItems(items, query) {
   });
 }
 
+// Favourites first, then whatever was used most recently, then everything that
+// has never been used, alphabetically. ISO timestamps compare correctly as
+// strings, so no date parsing is needed.
 export function sortItems(items) {
   return items.slice().sort((a, b) => {
     if (a.favorite !== b.favorite) return a.favorite ? -1 : 1;
+
+    const usedA = a.lastUsedAt || '';
+    const usedB = b.lastUsedAt || '';
+    if (usedA !== usedB) return usedA < usedB ? 1 : -1;
+
     const nameA = (a.name || a.username || '').toLowerCase();
     const nameB = (b.name || b.username || '').toLowerCase();
     return nameA.localeCompare(nameB);

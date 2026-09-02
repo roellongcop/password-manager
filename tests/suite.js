@@ -101,6 +101,39 @@ test('search matches across name, username and uri', () => {
   equal(model.searchItems(items, 'ada bank').length, 1, 'all terms must match');
 });
 
+test('the list is ordered by favourite, then by most recently used', () => {
+  const make = (name, favorite, lastUsedAt) =>
+    model.newItem('login', { name, favorite, lastUsedAt });
+
+  const ordered = model.sortItems([
+    make('Never used B', false, null),
+    make('Older', false, '2026-01-01T00:00:00Z'),
+    make('Newest', false, '2026-09-01T00:00:00Z'),
+    make('Never used A', false, null),
+    make('Favourite, never used', true, null),
+  ]);
+
+  equal(
+    ordered.map((item) => item.name),
+    ['Favourite, never used', 'Newest', 'Older', 'Never used A', 'Never used B'],
+    'favourites pinned, then recency, then unused alphabetically',
+  );
+});
+
+test('using an item moves it to the top', () => {
+  let vault = model.emptyVault();
+  const first = model.newItem('login', { name: 'First' });
+  const second = model.newItem('login', { name: 'Second' });
+  vault = model.upsertItem(vault, first);
+  vault = model.upsertItem(vault, second);
+
+  vault = model.touchItem(vault, second.id);
+  equal(model.sortItems(vault.items)[0].name, 'Second', 'the used one leads');
+
+  vault = model.touchItem(vault, first.id);
+  equal(model.sortItems(vault.items)[0].name, 'First', 'and the next one takes over');
+});
+
 test('publicSummary carries no secrets', () => {
   const item = model.newItem('login', { name: 'X', username: 'u', password: 'p', totp: 'JBSW' });
   const summary = model.publicSummary(item);

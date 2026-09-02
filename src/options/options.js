@@ -344,7 +344,15 @@ function renderList() {
         {
           class: 'entry',
           dataset: { active: item.id === state.selectedId ? '1' : '0' },
-          onclick: () => selectItem(item.id),
+          onclick: (event) => {
+            // The star sits inside the row button rather than being one itself:
+            // a button inside a button is invalid markup.
+            if (event.target.closest('.star')) {
+              toggleFavourite(item.id);
+              return;
+            }
+            selectItem(item.id);
+          },
         },
         [
           el('span', {
@@ -359,7 +367,12 @@ function renderList() {
           hasTotp(item) && item.type !== 'totp'
             ? el('span', { class: 'code-badge', title: 'Has a 2FA code', text: '2FA' })
             : null,
-          item.favorite ? el('span', { class: 'star', text: '★' }) : null,
+          el('span', {
+            class: 'star',
+            dataset: { on: item.favorite ? '1' : '0' },
+            title: item.favorite ? 'Remove from favourites' : 'Add to favourites',
+            text: item.favorite ? '★' : '☆',
+          }),
         ],
       ),
     );
@@ -374,6 +387,19 @@ function subtitleFor(item) {
     return digits ? `•••• ${digits.slice(-4)}` : 'Payment card';
   }
   return item.username || (item.uris || [])[0]?.uri || 'No username';
+}
+
+// Favourite is a single flag, so it saves on the spot rather than waiting for
+// the Save button -- and it writes to the stored item, never to a draft that may
+// have half-finished edits in it.
+async function toggleFavourite(id) {
+  const item = getItem(state.vault, id);
+  if (!item) return;
+  const updated = { ...item, favorite: !item.favorite };
+  state.vault = upsertItem(state.vault, updated);
+  if (state.draft && state.draft.id === id) state.draft.favorite = updated.favorite;
+  await persist();
+  render();
 }
 
 function selectItem(id) {

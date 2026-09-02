@@ -231,7 +231,9 @@ function renderDetail() {
     );
 
     if (item.username) container.append(fieldBlock('Username', item.username, false));
-    if (item.password) container.append(fieldBlock('Password', item.password, true));
+    if (item.password) {
+      container.append(fieldBlock('Password', item.password, true, { itemId: item.id }));
+    }
     if (item.totp) container.append(totpBlock(item));
     for (const uri of item.uris || []) {
       container.append(fieldBlock('Website', uri.uri, false, { link: true }));
@@ -258,7 +260,9 @@ function renderDetail() {
 
   if (item.type === 'card') {
     if (item.cardholder) container.append(fieldBlock('Cardholder', item.cardholder, false));
-    if (item.number) container.append(fieldBlock('Card number', item.number, true));
+    if (item.number) {
+      container.append(fieldBlock('Card number', item.number, true, { itemId: item.id }));
+    }
     if (item.expMonth || item.expYear) {
       container.append(fieldBlock('Expires', `${item.expMonth}/${item.expYear}`, false));
     }
@@ -273,6 +277,7 @@ function renderDetail() {
 }
 
 function fieldBlock(label, value, secret, options = {}) {
+  const usedId = options.itemId || '';
   const display = el('span', {
     class: `value${secret ? ' hidden-value mono' : ''}`,
     text: secret ? '•'.repeat(Math.min(20, value.length)) : value,
@@ -296,7 +301,7 @@ function fieldBlock(label, value, secret, options = {}) {
       el('button', {
         class: 'icon',
         text: 'Copy',
-        onclick: (event) => copyValue(value, event.currentTarget),
+        onclick: (event) => copyValue(value, event.currentTarget, usedId),
       }),
       options.link
         ? el('button', {
@@ -347,7 +352,7 @@ function totpBlock(item) {
       el('button', {
         class: 'icon',
         text: 'Copy',
-        onclick: (event) => copyValue(code.textContent, event.currentTarget),
+        onclick: (event) => copyValue(code.textContent, event.currentTarget, item.id),
       }),
     ]),
   ]);
@@ -373,9 +378,10 @@ function stopTotpTimer() {
   state.totpTimer = 0;
 }
 
-async function copyValue(value, button) {
+async function copyValue(value, button, itemId = '') {
   try {
     await copyWithAutoClear(value, state.vault.settings.clipboardClearSeconds);
+    if (itemId) send(MSG.USED, { itemId }).catch(() => {});
     // Swapping textContent is only safe on a button whose whole content is that
     // one label. On a button built from child elements it would delete them all,
     // so those get a data attribute and let CSS do the talking.
@@ -489,7 +495,7 @@ function renderCodes() {
         title: 'Click to copy this code',
         onclick: (event) => {
           if (!rowState.value) return;
-          copyValue(rowState.value, event.currentTarget);
+          copyValue(rowState.value, event.currentTarget, item.id);
         },
       },
       [
