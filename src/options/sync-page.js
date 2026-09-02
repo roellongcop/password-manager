@@ -180,28 +180,10 @@ function projectSection(status, notice, refresh) {
 
   return el('div', { class: 'section' }, [
     el('h2', { text: 'Firebase project' }),
-    el('p', {
-      text: 'Firebase console → Project settings (the gear, top left) → General → scroll to "Your apps" → the Web app → Config. Paste the whole snippet here and the two fields below fill themselves.',
-    }),
+    el('p', { text: 'Paste the config snippet and the two fields below fill themselves.' }),
     el('div', { class: 'field' }, [el('label', { text: 'Paste the Firebase config' }), paste]),
-
-    el('div', { class: 'field' }, [
-      el('label', { text: 'Web API key' }),
-      apiKey,
-      el('span', {
-        class: 'small muted',
-        text: 'The apiKey line in that snippet; starts with AIzaSy. Also shown under Project settings → General → Web API Key. It is an identifier, not a secret — the Firestore rules are what protect the vault.',
-      }),
-    ]),
-
-    el('div', { class: 'field' }, [
-      el('label', { text: 'Project ID' }),
-      projectId,
-      el('span', {
-        class: 'small muted',
-        text: 'The projectId line, and the name in the console URL (console.firebase.google.com/project/THIS-PART). Not the project display name — it is lowercase with a random suffix.',
-      }),
-    ]),
+    el('div', { class: 'field' }, [el('label', { text: 'Web API key' }), apiKey]),
+    el('div', { class: 'field' }, [el('label', { text: 'Project ID' }), projectId]),
 
     el('div', { class: 'field' }, [
       el('label', { text: 'Name for this computer' }),
@@ -272,22 +254,8 @@ function accountSection(status, notice, refresh) {
       class: 'notice warn',
       text: 'Do not reuse the master password here. This one is checked by Google; the master password must never be.',
     }),
-    el('div', { class: 'field' }, [
-      el('label', { text: 'Email' }),
-      email,
-      el('span', {
-        class: 'small muted',
-        text: 'One you invent now. It never receives mail; it is only a name for the account. Created accounts are listed in the console under Authentication → Users.',
-      }),
-    ]),
-    el('div', { class: 'field' }, [
-      el('label', { text: 'Password' }),
-      password,
-      el('span', {
-        class: 'small muted',
-        text: 'Also one you invent, at least six characters. On the second computer, enter the same two and press Sign in instead.',
-      }),
-    ]),
+    el('div', { class: 'field' }, [el('label', { text: 'Email' }), email]),
+    el('div', { class: 'field' }, [el('label', { text: 'Password' }), password]),
     el('div', { class: 'row' }, [
       el('button', {
         class: 'primary',
@@ -359,7 +327,7 @@ function helpSection() {
         el('li', { text: 'Build → Authentication → Get started → Email/Password → enable it.' }),
         el('li', { text: 'Build → Firestore Database → Create database → start in production mode.' }),
         el('li', { text: 'Firestore → Rules → replace them with the rules below → Publish. These are what stop anyone else reading your file.' }),
-        el('li', { text: 'Project settings (the gear) → General → Your apps → add a Web app. Copy apiKey and projectId from the config it shows.' }),
+        el('li', { text: 'Project settings (the gear) → General → Your apps → add a Web app. Paste the whole config snippet it shows into "Paste the Firebase config" above; the API key and project ID are read out of it. The API key is the apiKey line and the project ID is the lowercase name in the console URL, if you would rather type them.' }),
         el('li', { text: 'Paste those two above, save, then create the sync account.' }),
       ]),
       rules,
