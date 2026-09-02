@@ -811,7 +811,11 @@ function wireStaticHandlers() {
 
 chrome.runtime.onMessage.addListener((message) => {
   if (message?.type === 'state:locked') window.close();
-  if (message?.type === 'state:changed' && state.vault) loadVault();
+  // sync:pulled is its own message because it replaces the whole vault: the
+  // popup opens, asks for a sync, and the answer arrives after it has drawn.
+  if ((message?.type === 'state:changed' || message?.type === 'sync:pulled') && state.vault) {
+    loadVault();
+  }
 });
 
 boot().catch((error) => {
