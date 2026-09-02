@@ -51,8 +51,8 @@ Three ways to add a code:
   press Esc to cancel. Keyring crops its screenshot to that box, decodes it and
   saves the code, then confirms on the page itself. The screenshot is decoded
   inside the extension and never reaches the page.
-- **A saved image**, or a screenshot pasted with Ctrl+V, in
-  Manage -> Import & export.
+- **A saved image**: pick one in the code editor itself, or in
+  Manage -> Import & export, where a screenshot pasted with Ctrl+V works too.
 - **By hand**, pasting the secret or the otpauth:// link.
 
 QR decoding is written from scratch in [src/lib/qr.js](src/lib/qr.js) rather than

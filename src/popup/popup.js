@@ -478,12 +478,19 @@ function renderCodes() {
       '<svg class="ring" viewBox="0 0 26 26"><circle class="track" cx="13" cy="13" r="11"/>' +
       '<circle class="value" cx="13" cy="13" r="11" stroke-dasharray="69.1" stroke-dashoffset="0"/></svg>';
 
+    // The click copies the digits the timer last computed, not whatever happens
+    // to be in the DOM at that instant.
+    const rowState = { item, config, code, ring, value: '' };
+
     const row = el(
       'button',
       {
         class: 'entry code-row',
-        title: 'Copy this code',
-        onclick: (event) => copyValue(code.textContent.replace(/\s/g, ''), event.currentTarget),
+        title: 'Click to copy this code',
+        onclick: (event) => {
+          if (!rowState.value) return;
+          copyValue(rowState.value, event.currentTarget);
+        },
       },
       [
         el('span', {
@@ -502,7 +509,7 @@ function renderCodes() {
     );
 
     if (forSite.has(item.id)) row.dataset.forSite = '1';
-    rows.push({ item, config, code, ring });
+    rows.push(rowState);
     container.append(row);
   }
 
@@ -511,9 +518,12 @@ function renderCodes() {
     for (const row of rows) {
       try {
         const value = await generateTotp(row.config);
-        // Grouped in threes, the way authenticator apps show it.
-        row.code.textContent =
-          value.length === 6 ? `${value.slice(0, 3)} ${value.slice(3)}` : value;
+        // Grouped in threes, the way authenticator apps show it. Only touch the
+        // DOM when the digits actually change, so the text is not replaced under
+        // the pointer every second.
+        const shown = value.length === 6 ? `${value.slice(0, 3)} ${value.slice(3)}` : value;
+        if (row.code.textContent !== shown) row.code.textContent = shown;
+        row.value = value;
         const left = secondsRemaining(row.config.period);
         const circle = row.ring.querySelector('.value');
         if (circle) {

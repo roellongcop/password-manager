@@ -125,8 +125,8 @@ function restoreFromHash() {
   }
 
   const item = params.get('item');
-  if (item === 'new') {
-    state.draft = newItem('login', {
+  if (item === 'new' || item === 'newcode') {
+    state.draft = newItem(item === 'newcode' ? 'totp' : 'login', {
       folder: state.filter.kind === 'folder' ? state.filter.value : '',
     });
   } else if (item && getItem(state.vault, item)) {
@@ -147,7 +147,7 @@ function syncHash() {
       );
     }
     if (state.selectedId) params.set('item', state.selectedId);
-    else if (state.draft) params.set('item', 'new');
+    else if (state.draft) params.set('item', state.draft.type === 'totp' ? 'newcode' : 'new');
   }
   if (state.query) params.set('q', state.query);
 
@@ -671,15 +671,62 @@ function totpField(draft) {
   stopTotpTimer();
   state.totpTimer = setInterval(refreshPreview, 1000);
 
+  // A saved QR image fills the whole thing in, same as pasting the link.
+  const imageInput = el('input', {
+    type: 'file',
+    accept: 'image/*',
+    onchange: async (event) => {
+      const file = event.target.files[0];
+      event.target.value = '';
+      if (!file) return;
+      try {
+        const text = await decodeQrFile(file);
+        const parsed = parseTotpInput(text);
+        if (!parsed || !parsed.secret) {
+          throw new Error('That QR code is not an authenticator code.');
+        }
+        draft.totp = parsed.secret;
+        draft.totpAlgorithm = parsed.algorithm || TOTP_DEFAULTS.algorithm;
+        draft.totpDigits = parsed.digits || TOTP_DEFAULTS.digits;
+        draft.totpPeriod = parsed.period || TOTP_DEFAULTS.period;
+        if (!draft.name && parsed.issuer) draft.name = parsed.issuer;
+        if (!draft.username && parsed.account) draft.username = parsed.account;
+        flashMessage(notice, `Read the code for ${draft.name || 'this account'}.`, 'ok');
+        renderEditor();
+      } catch (error) {
+        flashMessage(notice, error.message, 'error', 8000);
+      }
+    },
+  });
+
   return el('div', { class: 'field' }, [
     el('label', { text: 'Authenticator secret (TOTP)' }),
     input,
     preview,
+    el('p', {
+      class: 'small muted',
+      style: 'margin:10px 0 5px',
+      text: 'Or read it from a saved QR image:',
+    }),
+    imageInput,
   ]);
 }
 
 // Algorithm, digits and period. Almost every site uses the defaults, so this stays
 // folded away until someone needs it.
+// Draw an image onto a canvas and read a QR code out of it.
+async function decodeQrFile(source) {
+  const bitmap = await createImageBitmap(source);
+  const canvas = document.createElement('canvas');
+  canvas.width = bitmap.width;
+  canvas.height = bitmap.height;
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  context.drawImage(bitmap, 0, 0);
+  const imageData = context.getImageData(0, 0, bitmap.width, bitmap.height);
+  bitmap.close();
+  return decodeImageData(imageData);
+}
+
 function totpAdvanced(draft) {
   const details = el('details', { class: 'field' });
   details.append(
@@ -1275,16 +1322,7 @@ function authenticatorImportSection() {
   // and import path as a pasted link.
   async function readQrImage(source, label) {
     try {
-      const bitmap = await createImageBitmap(source);
-      const canvas = document.createElement('canvas');
-      canvas.width = bitmap.width;
-      canvas.height = bitmap.height;
-      const context = canvas.getContext('2d', { willReadFrequently: true });
-      context.drawImage(bitmap, 0, 0);
-      const imageData = context.getImageData(0, 0, bitmap.width, bitmap.height);
-      bitmap.close();
-
-      const text = decodeImageData(imageData);
+      const text = await decodeQrFile(source);
       if (!/^otpauth:/i.test(text)) {
         throw new Error('That QR code holds something else, not an authenticator link.');
       }

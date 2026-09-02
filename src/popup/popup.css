@@ -364,3 +364,22 @@ body {
 .code-row[data-copied='1'] .copied {
   display: inline;
 }
+
+.code-row {
+  padding: 11px 10px;
+}
+
+.code-row .code {
+  font-size: 21px;
+  letter-spacing: 0.03em;
+  /* Fixed-width digits, so the number does not shift as it changes. */
+  font-variant-numeric: tabular-nums;
+}
+
+.code-row .copied {
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
