@@ -88,6 +88,39 @@
       : element.ownerDocument.body || element.ownerDocument;
   }
 
+  const EMAIL_TEXT = /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+.[A-Za-z0-9.-]+/;
+
+  // Who the second step of a login belongs to, when the page shows it instead of
+  // asking for it. Picking an account from a chooser, or "Welcome back, ada@..",
+  // leaves no field to read and nothing typed -- so without this the capture is a
+  // password with no owner.
+  //
+  // Only email-shaped text counts. A bare username on screen is indistinguishable
+  // from a greeting or a heading, and guessing wrong puts the wrong name on a
+  // saved password.
+  function displayedIdentifier(group) {
+    if (!group || !group.passwordField || group.usernameField) return '';
+
+    // The site's own record of who is signing in, if it kept one in the form.
+    const root = group.scope && group.scope.querySelectorAll ? group.scope : document;
+    for (const hidden of root.querySelectorAll('input[type="hidden"]')) {
+      const value = (hidden.value || '').trim();
+      if (value.length > 120 || !EMAIL_TEXT.test(value)) continue;
+      if (USERNAME_HINTS.test(KEYRING.attributeText(hidden))) return value;
+    }
+
+    // Otherwise read it off the screen, starting at the form and widening a
+    // couple of levels. Staying near the password field keeps a support address
+    // in the footer out of it.
+    let node = root.nodeType === 1 ? root : document.body;
+    for (let depth = 0; node && depth < 3; depth++) {
+      const match = (node.innerText || node.textContent || '').match(EMAIL_TEXT);
+      if (match) return match[0];
+      node = node.parentElement;
+    }
+    return '';
+  }
+
   function scoreUsername(input, passwordField) {
     const text = KEYRING.attributeText(input);
 
@@ -239,6 +272,7 @@
     isOtpField,
     isTextish,
     scopeFor,
+    displayedIdentifier,
     // The group that owns a given field, so clicking the icon fills the right form.
     groupForField(field, groups = collectGroupsCached()) {
       return (

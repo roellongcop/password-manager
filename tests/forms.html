@@ -235,6 +235,23 @@
     </section>
 
     <section>
+      <h2>13. Account already chosen (no username field)</h2>
+      <p class="hint">
+        The shape Gmail uses after you pick an account from the list: nothing is typed
+        and there is no username input, only the address on screen. The capture has to
+        read it from the page or the password is saved with no owner.
+      </p>
+      <form id="chosen">
+        <div class="account">Signed in as <strong>ada.lovelace@example.com</strong></div>
+        <input type="hidden" name="identifier" value="ada.lovelace@example.com" />
+        <label for="c-pass">Enter your password</label>
+        <input id="c-pass" name="Passwd" type="password" autocomplete="current-password" />
+        <button type="submit">Next</button>
+        <p class="out" id="chosen-out"></p>
+      </form>
+    </section>
+
+    <section>
       <h2>12. Inside an iframe</h2>
       <p class="hint">Same-origin iframe; the content script runs in it as well.</p>
       <iframe src="iframe-login.html" title="Login in an iframe"></iframe>
@@ -266,6 +283,11 @@
       });
       document.getElementById('t-in').addEventListener('click', () => {
         report('two-out', 't-user', 't-pass');
+      });
+
+      document.getElementById('chosen').addEventListener('submit', (event) => {
+        event.preventDefault();
+        report('chosen-out', 'c-pass');
       });
 
       document.getElementById('otp-form').addEventListener('submit', (event) => {
