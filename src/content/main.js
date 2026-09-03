@@ -102,6 +102,12 @@
       ? group.usernameField.value
       : typed.username;
 
+    // Nothing typed and no field to read: the account was picked from a list, so
+    // the page is showing who this password belongs to rather than asking.
+    if (!username && group) {
+      return { username: KEYRING.detect.displayedIdentifier(group), password: password || '' };
+    }
+
     return { username: username || '', password: password || '' };
   }
 
